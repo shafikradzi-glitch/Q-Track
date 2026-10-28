@@ -1,0 +1,1460 @@
+<script>
+/* Q-TRACK web client. Every value from the records is written as text (never as HTML). */
+(function () {
+  'use strict';
+
+  /* =====================================================================
+     Utilities
+     ===================================================================== */
+  const $ = (sel, root) => (root || document).querySelector(sel);
+
+  function h(tag, attrs) {
+    const el = document.createElement(tag);
+    const kids = Array.prototype.slice.call(arguments, 2);
+    if (attrs) Object.keys(attrs).forEach((k) => {
+      const v = attrs[k];
+      if (v === null || v === undefined || v === false) return;
+      if (k === 'class') el.className = v;
+      else if (k === 'text') el.textContent = v;
+      else if (k === 'style' && typeof v === 'object') Object.assign(el.style, v);
+      else if (k.slice(0, 2) === 'on' && typeof v === 'function') el.addEventListener(k.slice(2), v);
+      else if (k === 'value') el.value = v;
+      else if (k === 'checked') el.checked = !!v;
+      else el.setAttribute(k, v === true ? '' : v);
+    });
+    append(el, kids);
+    return el;
+  }
+  function append(el, kids) {
+    kids.forEach((c) => {
+      if (c === null || c === undefined || c === false) return;
+      if (Array.isArray(c)) append(el, c);
+      else el.appendChild(c instanceof Node ? c : document.createTextNode(String(c)));
+    });
+    return el;
+  }
+  const NS = 'http://www.w3.org/2000/svg';
+  function s(tag, attrs, text) {
+    const el = document.createElementNS(NS, tag);
+    Object.keys(attrs || {}).forEach((k) => { if (attrs[k] !== null && attrs[k] !== undefined) el.setAttribute(k, attrs[k]); });
+    if (text !== undefined) el.textContent = text;
+    return el;
+  }
+  const ICONS = {
+    gauge: 'M12 14l3.5-3.5M4.6 18a9 9 0 1 1 14.8 0',
+    grid: 'M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z',
+    flag: 'M5 21V4m0 0h11l-2 4 2 4H5',
+    up: 'M12 19V5m0 0l-6 6m6-6l6 6',
+    folder: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z',
+    alert: 'M12 9v4m0 4h.01M10.3 3.9L2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z',
+    milestone: 'M12 3l3 3-3 3-3-3zM12 9v12M6 15h12',
+    shield: 'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z',
+    check: 'M9 11l3 3 8-8M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9',
+    list: 'M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01',
+    week: 'M8 2v4M16 2v4M3 9h18M5 5h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z',
+    bell: 'M18 8a6 6 0 1 0-12 0c0 7-3 8-3 8h18s-3-1-3-8M13.7 21a2 2 0 0 1-3.4 0',
+    report: 'M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9zM14 3v6h6M8 13h8M8 17h5',
+    cog: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z',
+    audit: 'M12 8v4l3 3M3.05 11a9 9 0 1 1 .5 4M3 4v5h5',
+    desk: 'M3 13h18M5 13V7a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v6M7 13v6M17 13v6',
+    plus: 'M12 5v14M5 12h14',
+    search: 'M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3',
+    x: 'M18 6L6 18M6 6l12 12',
+    menu: 'M4 6h16M4 12h16M4 18h16',
+    sun: 'M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10zM12 1v2M12 21v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1 12h2M21 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4',
+    moon: 'M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z',
+    refresh: 'M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6',
+    download: 'M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2',
+    upload: 'M12 21V9m0 0l-4 4m4-4l4 4M4 7V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v2',
+    print: 'M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v7H6z',
+    back: 'M15 18l-6-6 6-6',
+    info: 'M12 16v-4M12 8h.01M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z',
+    ext: 'M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3',
+    inbox: 'M22 12h-6l-2 3h-4l-2-3H2M5.5 5h13l3.5 7v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-6z',
+  };
+  function icon(name) {
+    const svg = s('svg', { viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.8', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true' });
+    svg.appendChild(s('path', { d: ICONS[name] || ICONS.info }));
+    return svg;
+  }
+
+  const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const F = {
+    date(iso) { if (!iso) return '—'; const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso); return m ? (+m[3]) + ' ' + MONTHS[+m[2] - 1] + ' ' + m[1] : iso; },
+    short(iso) { if (!iso) return '—'; const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso); return m ? (+m[3]) + ' ' + MONTHS[+m[2] - 1] : iso; },
+    month(p) { if (!p) return '—'; const m = /^(\d{4})-(\d{2})/.exec(p); return m ? MONTHS[+m[2] - 1] + ' ' + m[1] : p; },
+    monthShort(p) { const m = /^(\d{4})-(\d{2})/.exec(p || ''); return m ? MONTHS[+m[2] - 1] + ' ' + m[1].slice(2) : p; },
+    pct(x, d) { return x === null || x === undefined || isNaN(x) ? '—' : (x * 100).toFixed(d || 0) + '%'; },
+    int(x) { return x === null || x === undefined ? '—' : Number(x).toLocaleString('en-GB'); },
+    stamp(t) { if (!t) return '—'; return F.date(t.slice(0, 10)) + (t.length > 10 ? ', ' + t.slice(11, 16) : ''); },
+  };
+  const dayNum = (iso) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || ''); return m ? Date.UTC(+m[1], +m[2] - 1, +m[3]) / 864e5 : null; };
+  const days = (a, b) => { const x = dayNum(a), y = dayNum(b); return x === null || y === null ? null : y - x; };
+  const shiftPeriod = (p, n) => { const d = new Date(Date.UTC(+p.slice(0, 4), +p.slice(5, 7) - 1 + n, 1)); return d.toISOString().slice(0, 7); };
+  const initials = (name) => String(name || '?').replace(/\(.*?\)/g, '').trim().split(/\s+/).slice(0, 2).map((w) => w.charAt(0).toUpperCase()).join('') || '?';
+  const debounce = (fn, ms) => { let t; return function () { clearTimeout(t); const a = arguments; t = setTimeout(() => fn.apply(null, a), ms); }; };
+  const store = {
+    get(k) { try { return localStorage.getItem('qtrack.' + k); } catch (e) { return null; } },
+    set(k, v) { try { localStorage.setItem('qtrack.' + k, v); } catch (e) { /* private window */ } },
+  };
+
+  /* =====================================================================
+     Server
+     ===================================================================== */
+  function call(action, payload) {
+    return new Promise((resolve, reject) => {
+      google.script.run
+        .withSuccessHandler((txt) => { let r; try { r = JSON.parse(txt); } catch (e) { reject({ code: 'BAD_REPLY', message: 'Q-TRACK received an unreadable reply.' }); return; } r.ok ? resolve(r.data) : reject(r); })
+        .withFailureHandler((e) => reject({ code: 'NETWORK', message: (e && e.message) || 'Q-TRACK could not reach the server. Check your connection and try again.' }))
+        .api(action, JSON.stringify(payload || {}));
+    });
+  }
+
+  /* =====================================================================
+     State and lookups
+     ===================================================================== */
+  const S = {
+    boot: null,
+    view: 'command',
+    params: {},
+    prog: store.get('prog') || 'Portfolio',
+    theme: store.get('theme') || 'system',
+    filters: {},
+    history: [],
+  };
+  const B = () => S.boot;
+  const D = (t) => (S.boot.data[t] || []);
+  const me = () => S.boot.me;
+  const role = () => S.boot.me.role;
+  const isHQ = () => role() === 'HQ';
+  const isStaff = () => role() !== 'VIEWER';
+  const isMe = (email) => String(email || '').toLowerCase() === String(me().email).toLowerCase();
+  const own = (projectId) => S.boot.ownProjects.indexOf(projectId) >= 0;
+  const projById = (id) => D('Projects').find((p) => p.id === id);
+  const projLabel = (id) => { const p = projById(id); return p ? p.code : id ? id : '—'; };
+  const userBy = (email) => D('Users').find((u) => String(u.email).toLowerCase() === String(email || '').toLowerCase());
+  const userName = (email) => { if (!email) return '—'; const u = userBy(email); return u ? u.name : email; };
+  const schema = (t) => S.boot.schema[t];
+  const fieldOf = (t, k) => schema(t).fields.find((f) => f.k === k);
+  const inProg = (projectId) => { if (S.prog === 'Portfolio') return true; const p = projById(projectId); return !!p && p.programme === S.prog; };
+  const proposed = () => !S.boot.config.thresholdsApproved;
+
+  /** Client mirror of the server's write rules: used only to show or hide buttons. */
+  function canCreate(t) {
+    const r = role();
+    if (r === 'VIEWER') return false;
+    if (r === 'HQ') return true;
+    if (t === 'Users' || t === 'Projects') return r === 'CLERK';
+    if (t === 'NCRs' || t === 'Milestones') return r === 'CLERK' || S.boot.ownProjects.length > 0;
+    if (t === 'Findings' || t === 'Escalations' || t === 'Risks' || t === 'Assessments') return r === 'AM' && S.boot.ownProjects.length > 0;
+    if (t === 'Tasks' || t === 'Weekly') return true;
+    return false;
+  }
+  function canEdit(t, rec) {
+    const r = role();
+    if (!rec || r === 'VIEWER') return false;
+    if (t === 'Assessments' && ['Draft', 'Returned'].indexOf(rec.state) < 0 && !(r === 'HQ' && rec.state === 'Submitted')) return false;
+    if (t === 'Reports' && rec.state === 'Issued') return false;
+    if (r === 'HQ') return true;
+    switch (t) {
+      case 'Users': return r === 'CLERK' && rec.role !== 'HQ';
+      case 'Projects': return r === 'CLERK' || own(rec.id);
+      case 'NCRs': case 'Milestones': return r === 'CLERK' || own(rec.projectId);
+      case 'Assessments': case 'Escalations': case 'Risks': return r === 'AM' && own(rec.projectId);
+      case 'Findings': return r === 'AM' && (own(rec.projectId) || isMe(rec.qaOwner));
+      case 'Tasks': return isMe(rec.assignee);
+      case 'Weekly': return isMe(rec.createdBy);
+    }
+    return false;
+  }
+  function optionsFor(t, f, rec) {
+    if (f.type === 'project') {
+      let ps = D('Projects').slice().sort((a, b) => String(a.code).localeCompare(String(b.code)));
+      if (!isHQ() && role() === 'AM' && ['Assessments', 'Findings', 'Escalations', 'Risks', 'NCRs', 'Milestones'].indexOf(t) >= 0) ps = ps.filter((p) => own(p.id) || (rec && rec.projectId === p.id));
+      return ps.map((p) => ({ v: p.id, l: p.code + ' — ' + p.name }));
+    }
+    if (f.type === 'user') return D('Users').filter((u) => u.active !== false && u.role !== 'VIEWER').map((u) => ({ v: u.email, l: u.name + (u.code ? ' (' + u.code + ')' : '') }));
+    return (f.options || []).map((o) => ({ v: o, l: f.labels && f.labels[o] ? f.labels[o] : o === '' ? '—' : o }));
+  }
+
+  /* =====================================================================
+     Presentation helpers
+     ===================================================================== */
+  const STATUS_CLASS = {
+    Green: 'st-Green', Amber: 'st-Amber', Red: 'st-Red', Grey: 'st-Grey', 'Not assessed': 'st-Not', 'N/A': 'st-NA',
+    Approved: 'st-Green', Accepted: 'st-Green', 'Verified effective': 'st-Green', Achieved: 'st-Green', 'On track': 'st-Green', Effective: 'st-Green', Adequate: 'st-Green', Issued: 'st-Green', Improving: 'st-Green',
+    Submitted: 'st-Amber', 'In review': 'st-Amber', 'Response received': 'st-Amber', Implemented: 'st-Amber', Responded: 'st-Amber', 'Partly adequate': 'st-Amber', 'In progress': 'st-Amber', Stable: '',
+    Late: 'st-Red', 'Past baseline': 'st-Red', 'Past forecast': 'st-Red', 'Not effective': 'st-Red', Returned: 'st-Red', Inadequate: 'st-Red', Worsening: 'st-Red', 'Not submitted': 'st-Red',
+  };
+  function chip(v, extra) {
+    if (v === null || v === undefined || v === '') return h('span', { class: 'muted' }, '—');
+    return h('span', { class: 'chip ' + (STATUS_CLASS[v] || '') + (extra ? ' ' + extra : '') }, v);
+  }
+  function sevChip(v) { return v ? h('span', { class: 'chip plain sev-' + v }, v) : h('span', { class: 'muted' }, '—'); }
+  function lvl(v) { return h('span', { class: 'lvl ' + (v || '') , title: 'Escalation level ' + v }, v || '–'); }
+  const CELL_TXT = { Green: 'G', Amber: 'A', Red: 'R', Grey: '?', 'N/A': '–' };
+  const CELL_CLASS = (v) => (v === 'N/A' ? 'NA' : v || 'none');
+  function card(title, sub, body, opts) {
+    opts = opts || {};
+    return h('section', { class: 'card' + (opts.cls ? ' ' + opts.cls : ''), id: opts.id || null, 'aria-label': title },
+      h('div', { class: 'ch' }, h('div', { class: 'tt' }, h('h2', null, title), sub ? h('p', null, sub) : null), opts.right || null),
+      h('div', { class: 'cb' }, body),
+      opts.foot ? h('div', { class: 'cf' }, opts.foot) : null);
+  }
+  function l2tag() { return h('span', { class: 'tag l2', title: 'Level 2: project / contractor performance, not HQ QA output (DR-02)' }, 'Level 2 · project data'); }
+  function proptag() { return proposed() ? h('span', { class: 'tag prop', title: 'Thresholds stay Proposed until Head – QA approves them (RMM Annex A)' }, 'Proposed') : null; }
+  function empty(msg, ic) { return h('div', { class: 'empty' }, icon(ic || 'inbox'), h('div', null, msg)); }
+
+  function toast(msg, kind, ms) {
+    const t = $('#toast');
+    t.className = 'toast' + (kind ? ' ' + kind : '');
+    t.textContent = msg;
+    t.hidden = false;
+    clearTimeout(toast.t);
+    toast.t = setTimeout(() => { t.hidden = true; }, ms || (kind === 'err' ? 7000 : 3500));
+  }
+  function fail(e) { toast((e && e.message) || 'Something went wrong.', 'err'); }
+
+  /* Print and file downloads. A preview page hosted outside Apps Script may block both. */
+  function printPage() {
+    if (window.QTRACK_PREVIEW) { toast('Printing works in the deployed Q-TRACK (A4 landscape). This preview cannot open the print dialog.'); return; }
+    window.print();
+  }
+  function saveFile(blob, name) {
+    if (window.QTRACK_PREVIEW) { toast('Downloads work in the deployed Q-TRACK. This preview cannot save files.'); return false; }
+    const a = h('a', { href: URL.createObjectURL(blob), download: name });
+    document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+    return true;
+  }
+
+  /* =====================================================================
+     Navigation
+     ===================================================================== */
+  const NAV = [
+    { grp: 'Dashboard' },
+    { v: 'command', label: 'Command Centre', ic: 'gauge' },
+    { v: 'mywork', label: 'My work', ic: 'desk', staff: true },
+    { grp: 'Assurance assessment' },
+    { v: 'assessments', label: 'Heat-map & assessments', ic: 'grid' },
+    { v: 'Findings', label: 'Findings & CAPA refs', ic: 'flag', staff: true },
+    { v: 'Escalations', label: 'Escalations & decisions', ic: 'up' },
+    { grp: 'Projects' },
+    { v: 'Projects', label: 'Project register', ic: 'folder' },
+    { v: 'NCRs', label: 'Project NCR & OBS', ic: 'alert', staff: true },
+    { v: 'Milestones', label: 'Critical milestones', ic: 'milestone' },
+    { v: 'Risks', label: 'Quality risks', ic: 'shield' },
+    { grp: 'Work & reporting' },
+    { v: 'Tasks', label: 'Tasks & deliverables', ic: 'check', staff: true },
+    { v: 'Weekly', label: 'Weekly updates', ic: 'week', staff: true },
+    { v: 'alerts', label: 'Alerts', ic: 'bell', badge: true },
+    { v: 'report', label: 'Monthly report', ic: 'report' },
+    { grp: 'System', admin: true },
+    { v: 'admin', label: 'Administration', ic: 'cog', admin: true },
+    { v: 'audit', label: 'Audit log', ic: 'audit', hq: true },
+  ];
+  const TITLES = { command: 'Command Centre', mywork: 'My work', assessments: 'Heat-map & assessments', assessment: 'Level 4 assessment', project: 'Project', alerts: 'Alerts', report: 'Monthly management report', admin: 'Administration', audit: 'Audit log' };
+  function navAllowed(n) {
+    if (n.staff && !isStaff()) return false;
+    if (n.admin && !(isHQ() || role() === 'CLERK')) return false;
+    if (n.hq && !isHQ()) return false;
+    return true;
+  }
+  function go(view, params, opts) {
+    if (!(opts && opts.replace)) S.history.push({ view: S.view, params: S.params });
+    S.view = view;
+    S.params = params || {};
+    closeSide();
+    renderMain();
+    window.scrollTo(0, 0);
+  }
+  function back() {
+    const prev = S.history.pop();
+    if (prev) { S.view = prev.view; S.params = prev.params; renderMain(); window.scrollTo(0, 0); } else go('command', {}, { replace: true });
+  }
+  function followLink(link) {
+    if (!link) return;
+    if (link.view === 'Assessment') return go('assessment', { id: link.id });
+    if (link.view === 'Project') return go('project', { id: link.id });
+    if (link.view === 'Assessments') return go('assessments', { projectId: link.projectId });
+    if (link.id && S.boot.schema[link.view]) { go(link.view, { projectId: link.projectId }); const rec = D(link.view).find((r) => r.id === link.id); if (rec) openRecord(link.view, rec); return; }
+    go(link.view, { projectId: link.projectId });
+  }
+
+  /* =====================================================================
+     Theme
+     ===================================================================== */
+  function applyTheme() {
+    const r = document.documentElement;
+    if (S.theme === 'system') r.removeAttribute('data-theme'); else r.setAttribute('data-theme', S.theme);
+  }
+  function cycleTheme() {
+    S.theme = S.theme === 'system' ? 'dark' : S.theme === 'dark' ? 'light' : 'system';
+    store.set('theme', S.theme);
+    applyTheme();
+    toast('Theme: ' + (S.theme === 'system' ? 'follow device' : S.theme));
+    renderMain();
+  }
+
+  /* =====================================================================
+     Shell
+     ===================================================================== */
+  function renderShell() {
+    const app = $('#app');
+    app.replaceChildren();
+    const side = h('aside', { class: 'side', id: 'side', 'aria-label': 'Main menu' },
+      h('div', { class: 'brand' }, h('div', { class: 'mark', 'aria-hidden': 'true' }, 'QT'), h('div', null, h('b', null, 'Q-TRACK'), h('span', null, B().app.tagline))),
+      h('nav', { class: 'nav', id: 'nav' }),
+      h('div', { class: 'side-foot' }, B().config.orgName, h('br'), 'v' + B().app.version + ' · ' + B().app.edition));
+    const top = h('header', { class: 'top' },
+      h('button', { class: 'btn ghost icon menu-btn', 'aria-label': 'Open menu', onclick: openSide }, icon('menu')),
+      h('div', { class: 'crumbs' }, h('small', { id: 'crumb-sub' }), h('b', { id: 'crumb' })),
+      h('div', { class: 'sp' }),
+      h('button', { class: 'btn ghost icon', title: 'Refresh from the Sheet', 'aria-label': 'Refresh', onclick: () => refresh(true) }, icon('refresh')),
+      h('button', { class: 'btn ghost icon', title: 'Theme', 'aria-label': 'Change theme', onclick: cycleTheme }, icon(S.theme === 'dark' ? 'moon' : 'sun')),
+      h('div', { class: 'who' }, h('div', { class: 'avatar', 'aria-hidden': 'true' }, initials(me().name)), h('div', { class: 'meta' }, h('b', null, me().name), h('span', null, B().roles[role()]))));
+    const main = h('div', { class: 'main' }, top, h('main', { class: 'content', id: 'content', tabindex: '-1' }));
+    app.append(h('div', { class: 'shell' }, side, main), h('div', { class: 'scrim', id: 'scrim', onclick: closeSide }));
+    drawNav();
+  }
+  function drawNav() {
+    const nav = $('#nav');
+    if (!nav) return;
+    nav.replaceChildren();
+    const al = B().dashboard.alerts;
+    const crit = al.filter((a) => a.severity === 'Critical').length;
+    const active = S.view === 'assessment' ? 'assessments' : S.view === 'project' ? 'Projects' : S.view;
+    let pendingGroup = null;
+    NAV.forEach((n) => {
+      if (n.grp) { pendingGroup = n; return; }
+      if (!navAllowed(n)) return;
+      if (pendingGroup && navAllowed(pendingGroup)) { nav.appendChild(h('div', { class: 'grp' }, pendingGroup.grp)); pendingGroup = null; }
+      const b = h('button', { 'aria-current': active === n.v ? 'page' : null, onclick: () => { S.history = []; go(n.v); } }, icon(n.ic), n.label);
+      if (n.badge && al.length) b.appendChild(h('span', { class: 'badge' + (crit ? ' crit' : ''), title: al.length + ' open alerts, ' + crit + ' critical' }, String(al.length)));
+      if (n.v === 'mywork') { const c = myQueueCount(); if (c) b.appendChild(h('span', { class: 'badge' }, String(c))); }
+      nav.appendChild(b);
+    });
+  }
+  function openSide() { $('#side').classList.add('open'); $('#scrim').classList.add('on'); }
+  function closeSide() { const sd = $('#side'); if (sd) { sd.classList.remove('open'); $('#scrim').classList.remove('on'); } }
+
+  function setCrumb(title, sub) {
+    $('#crumb').textContent = title;
+    $('#crumb-sub').textContent = sub || B().config.orgName;
+    document.title = title + ' · Q-TRACK';
+  }
+
+  function renderMain() {
+    const c = $('#content');
+    if (!c) return;
+    c.replaceChildren();
+    drawNav();
+    if (B().config.sampleData) c.appendChild(h('div', { class: 'banner sample', role: 'note' }, icon('info'), 'SAMPLE DATA — this Q-TRACK holds clearly labelled demonstration records (project codes DEMO-…). Do not use for reporting.'));
+    const v = VIEWS[S.view] || (S.boot.schema[S.view] ? registerView : null) || VIEWS.command;
+    try { v(c); } catch (e) { console.error(e); c.appendChild(card('This screen could not be drawn', null, h('p', null, String(e.message)))); }
+  }
+
+  /* =====================================================================
+     Shared blocks
+     ===================================================================== */
+  function progPills(onChange) {
+    const progs = ['Portfolio'].concat(B().dashboard.programmes.filter((p) => p.programme !== 'Portfolio').map((p) => p.programme));
+    if (progs.indexOf(S.prog) < 0) S.prog = 'Portfolio';
+    return h('div', { class: 'pills', role: 'group', 'aria-label': 'Programme' }, progs.map((p) => h('button', {
+      'aria-pressed': String(S.prog === p),
+      onclick: () => { S.prog = p; store.set('prog', p); (onChange || renderMain)(); },
+    }, p === 'L4/L5' ? 'L4/L5 Projects' : p)));
+  }
+
+  function pageHead(title, desc, acts, extra) {
+    return h('div', { class: 'ph' }, h('div', { class: 't' }, h('h1', null, title), desc ? h('p', null, desc) : null, extra || null), acts ? h('div', { class: 'acts' }, acts) : null);
+  }
+
+  function heatTable(rows, opts) {
+    opts = opts || {};
+    const areas = B().areas;
+    const tb = h('tbody');
+    rows.forEach((r) => {
+      const tr = h('tr');
+      tr.appendChild(h('td', { class: 'l' }, h('button', { class: 'btn ghost', style: { height: 'auto', padding: '2px 0', justifyContent: 'flex-start', textAlign: 'left', whiteSpace: 'normal', display: 'block' }, onclick: () => go('project', { id: r.projectId }) }, h('b', null, r.code), h('span', null, r.name + ' · Tier ' + r.tier + (r.tierStatus === 'Provisional' ? ' (provisional)' : '')))));
+      for (let i = 0; i < 10; i++) {
+        const v = r.areas ? r.areas[i] : null;
+        const lab = areas[i].title + ': ' + (v || 'not assessed');
+        tr.appendChild(h('td', null, r.assessmentId
+          ? h('button', { class: 'cell ' + CELL_CLASS(v), 'aria-label': r.code + ' — ' + lab, title: lab, onclick: () => go('assessment', { id: r.assessmentId, area: i + 1 }) }, CELL_TXT[v] || '·')
+          : h('span', { class: 'cell none', title: lab }, '·')));
+      }
+      const ov = r.overall;
+      tr.appendChild(h('td', null, h('span', { class: 'cell ov ' + (ov === 'Not assessed' ? 'none' : CELL_CLASS(ov)), title: r.moderated ? 'Moderated by Head – QA' : '' }, ov + (r.moderated ? ' *' : ''))));
+      tr.appendChild(h('td', { style: { textAlign: 'center' } }, r.change === 'worse' ? h('span', { class: 'chg worse' }, '▼ worse') : r.change === 'better' ? h('span', { class: 'chg better' }, '▲ better') : r.change === 'same' ? h('span', { class: 'muted xs' }, 'same') : h('span', { class: 'muted xs' }, r.period ? 'new' : '—')));
+      if (!opts.compact) tr.appendChild(h('td', { class: 'xs muted', style: { textAlign: 'center', whiteSpace: 'nowrap' } }, r.period ? F.month(r.period) : '—'));
+      tb.appendChild(tr);
+    });
+    const head = h('tr', null, h('th', { class: 'l' }, 'Project'), areas.map((a) => h('th', { title: a.title }, a.n + '. ' + a.short)), h('th', null, 'Overall'), h('th', null, 'Change'), opts.compact ? null : h('th', null, 'Period'));
+    return h('div', { style: { overflowX: 'auto' } }, h('table', { class: 'heat' }, h('thead', null, head), tb));
+  }
+  function heatLegend() {
+    return h('div', { class: 'legend' },
+      [['Green', 'Green — controls operating, effective'], ['Amber', 'Amber — developing weakness / effectiveness not yet shown'], ['Red', 'Red — significant control failure'], ['Grey', 'Grey — limited evidence, not rated'], ['NA', 'N/A']]
+        .map((x) => h('span', null, h('i', { class: 'cell ' + x[0], style: { display: 'inline-block', width: '14px', height: '14px', minWidth: '14px', borderRadius: '4px' } }), x[1])));
+  }
+
+  function alertList(alerts, max) {
+    if (!alerts.length) return empty('No open alerts. Alerts appear when a rule is met and clear themselves when it is resolved.', 'bell');
+    const box = h('div', { class: 'list' });
+    alerts.slice(0, max || alerts.length).forEach((a) => {
+      const p = projById(a.projectId);
+      box.appendChild(h('button', { class: 'li', onclick: () => followLink(a.link) },
+        sevChip(a.severity),
+        h('span', { class: 'body' }, h('b', null, a.title), h('span', { class: 'small muted' }, (p ? p.code + ' · ' : '') + a.detail)),
+        h('span', { class: 'side-r' }, h('span', { class: 'band' }, a.band), a.date ? F.short(a.date) : '')));
+    });
+    if (max && alerts.length > max) box.appendChild(h('div', { style: { paddingTop: '10px' } }, h('button', { class: 'btn sm', onclick: () => go('alerts') }, 'Show ' + (alerts.length - max) + ' more')));
+    return box;
+  }
+
+  function decisionList(escs) {
+    if (!escs.length) return empty('No open Level B or C escalations.', 'up');
+    const box = h('div', { class: 'list' });
+    escs.forEach((e) => {
+      const dd = days(B().asOf, e.dueDate);
+      box.appendChild(h('button', { class: 'li', onclick: () => openRecord('Escalations', e) },
+        lvl(e.level),
+        h('span', { class: 'body' }, h('b', null, e.ask), h('span', { class: 'small muted' }, projLabel(e.projectId) + ' · ' + e.owner + (e.hqAction ? ' · HQ QA: ' + e.hqAction : ''))),
+        h('span', { class: 'side-r' }, h('span', { class: 'chip plain ' + (dd < 0 ? 'st-Red' : dd <= 7 ? 'st-Amber' : '') }, dd < 0 ? Math.abs(dd) + ' d overdue' : dd === 0 ? 'due today' : 'in ' + dd + ' d'), h('br'), F.short(e.dueDate))));
+    });
+    return box;
+  }
+
+  /* ---------------- charts ---------------- */
+  function tipFor(box) { let t = box.querySelector(':scope > .tip'); if (!t) { t = h('div', { class: 'tip', hidden: true }); box.appendChild(t); } return t; }
+  function showTip(box, ev, lines) {
+    const t = tipFor(box);
+    t.replaceChildren(...lines.map((l, i) => (i === 0 ? h('b', null, l) : h('div', null, l))));
+    t.hidden = false;
+    const r = box.getBoundingClientRect();
+    let x = ev.clientX - r.left + 12, y = ev.clientY - r.top + 12;
+    if (x + t.offsetWidth > r.width) x = Math.max(0, ev.clientX - r.left - t.offsetWidth - 12);
+    if (y + t.offsetHeight > r.height + 40) y = Math.max(0, ev.clientY - r.top - t.offsetHeight - 12);
+    t.style.left = x + 'px'; t.style.top = y + 'px';
+  }
+  function hideTip(box) { const t = box.querySelector(':scope > .tip'); if (t) t.hidden = true; }
+  const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+
+  /** Horizontal bars with labels and values. rows: {label, value, color?, tip?} */
+  function hbars(rows, opts) {
+    opts = opts || {};
+    const box = h('div', { class: 'chart' });
+    requestAnimationFrame(() => {
+      const W = Math.max(260, box.clientWidth || 480), rowH = 24, gap = 8;
+      const H = rows.length * (rowH + gap) + 4;
+      const svg = s('svg', { viewBox: '0 0 ' + W + ' ' + H, width: '100%', role: 'img', 'aria-label': opts.aria || '' });
+      const lw = Math.min(W * 0.42, 190), vw = 46;
+      const max = Math.max(1, opts.max || Math.max.apply(null, rows.map((r) => r.value)));
+      let cum = 0;
+      const total = rows.reduce((a, r) => a + r.value, 0);
+      rows.forEach((r, i) => {
+        const y = i * (rowH + gap);
+        const label = String(r.label);
+        svg.appendChild(s('text', { x: lw - 10, y: y + rowH / 2 + 4, 'text-anchor': 'end', class: 'lbl' }, label.length > 28 ? label.slice(0, 27) + '…' : label));
+        svg.appendChild(s('rect', { x: lw, y: y, width: W - lw - vw, height: rowH, rx: 5, fill: css('--sunk') }));
+        const bw = Math.max(2, (W - lw - vw) * (r.value / max));
+        const bar = s('rect', { x: lw, y: y, width: bw, height: rowH, rx: 5, fill: r.color || css('--s1') });
+        svg.appendChild(bar);
+        svg.appendChild(s('text', { x: lw + bw + 6, y: y + rowH / 2 + 4, class: 'val' }, F.int(r.value)));
+        cum += r.value;
+        const c = cum;
+        bar.addEventListener('mousemove', (ev) => showTip(box, ev, [label, F.int(r.value) + (total ? ' · ' + F.pct(r.value / total) + ' of total · cumulative ' + F.pct(c / total) : '')].concat(r.tip ? [r.tip] : [])));
+        bar.addEventListener('mouseleave', () => hideTip(box));
+      });
+      box.prepend(svg);
+    });
+    return box;
+  }
+
+  /** NCR/OBS raised per month with c-chart limits. */
+  function cchart(monthly) {
+    const box = h('div', { class: 'chart' });
+    requestAnimationFrame(() => {
+      const W = Math.max(300, box.clientWidth || 600), H = 200, m = { l: 30, r: 52, t: 12, b: 26 };
+      const n = monthly.raised.length, c = monthly.chart;
+      const max = Math.max(4, c.ucl, Math.max.apply(null, monthly.raised)) * 1.1;
+      const x = (i) => m.l + (i + 0.5) * ((W - m.l - m.r) / n), bw = Math.max(6, ((W - m.l - m.r) / n) * 0.62);
+      const y = (v) => H - m.b - (v / max) * (H - m.t - m.b);
+      const svg = s('svg', { viewBox: '0 0 ' + W + ' ' + H, width: '100%', role: 'img', 'aria-label': 'NCR and OBS raised per month with control limits' });
+      [0, Math.round(max / 2), Math.round(max)].forEach((t) => {
+        svg.appendChild(s('line', { x1: m.l, x2: W - m.r, y1: y(t), y2: y(t), stroke: css('--chart-grid') }));
+        svg.appendChild(s('text', { x: m.l - 6, y: y(t) + 4, 'text-anchor': 'end' }, String(t)));
+      });
+      monthly.raised.forEach((v, i) => {
+        const special = c.special[i];
+        const r = s('rect', { x: x(i) - bw / 2, y: y(v), width: bw, height: Math.max(0, H - m.b - y(v)), rx: 3, fill: special ? css('--bad-solid') : css('--s1'), opacity: special ? 1 : 0.85 });
+        r.addEventListener('mousemove', (ev) => showTip(box, ev, [F.month(monthly.months[i]), v + ' raised · ' + monthly.closed[i] + ' closed', special ? 'Above the upper control limit (special cause)' : 'Within control limits']));
+        r.addEventListener('mouseleave', () => hideTip(box));
+        svg.appendChild(r);
+        if (n <= 12 || i % 2 === 0) svg.appendChild(s('text', { x: x(i), y: H - 8, 'text-anchor': 'middle' }, F.monthShort(monthly.months[i]).split(' ')[0]));
+      });
+      const line = (v, lab, dash) => {
+        svg.appendChild(s('line', { x1: m.l, x2: W - m.r, y1: y(v), y2: y(v), stroke: css('--chart-ref'), 'stroke-dasharray': dash, 'stroke-width': 1.3 }));
+        svg.appendChild(s('text', { x: W - m.r + 6, y: y(v) + 4 }, lab));
+      };
+      line(c.cl, 'c̄ ' + c.cl.toFixed(1), '');
+      line(c.ucl, 'UCL ' + c.ucl.toFixed(1), '5 4');
+      box.prepend(svg);
+    });
+    return box;
+  }
+
+  /** Baseline (hollow) vs forecast/actual (filled) per milestone on a time axis. */
+  function dumbbell(ms) {
+    const box = h('div', { class: 'chart' });
+    if (!ms.length) return empty('No critical milestones recorded.', 'milestone');
+    requestAnimationFrame(() => {
+      const W = Math.max(320, box.clientWidth || 640), rowH = 30, lw = Math.min(W * 0.4, 270), m = { t: 26, r: 24 };
+      const asOf = B().asOf;
+      const pts = [];
+      ms.forEach((x) => [x.baseline, x.forecast, x.actual].forEach((d) => { if (d) pts.push(dayNum(d)); }));
+      pts.push(dayNum(asOf));
+      let lo = Math.min.apply(null, pts) - 7, hi = Math.max.apply(null, pts) + 7;
+      const H = m.t + ms.length * rowH + 6;
+      const X = (d) => lw + ((dayNum(d) - lo) / (hi - lo || 1)) * (W - lw - m.r);
+      const svg = s('svg', { viewBox: '0 0 ' + W + ' ' + H, width: '100%', role: 'img', 'aria-label': 'Critical milestones: baseline against forecast' });
+      const ticks = 5;
+      for (let i = 0; i <= ticks; i++) {
+        const d = new Date((lo + ((hi - lo) * i) / ticks) * 864e5).toISOString().slice(0, 10);
+        svg.appendChild(s('line', { x1: X(d), x2: X(d), y1: m.t - 6, y2: H, stroke: css('--chart-grid') }));
+        svg.appendChild(s('text', { x: X(d), y: 12, 'text-anchor': 'middle' }, F.short(d)));
+      }
+      svg.appendChild(s('line', { x1: X(asOf), x2: X(asOf), y1: m.t - 8, y2: H, stroke: css('--accent'), 'stroke-width': 1.5, 'stroke-dasharray': '3 3' }));
+      svg.appendChild(s('text', { x: X(asOf) + 4, y: m.t - 10, fill: css('--accent') }, 'today'));
+      ms.forEach((x, i) => {
+        const y = m.t + i * rowH + rowH / 2;
+        const lab = projLabel(x.projectId) + ' · ' + x.item;
+        svg.appendChild(s('text', { x: lw - 10, y: y + 4, 'text-anchor': 'end', class: 'lbl' }, lab.length > 38 ? lab.slice(0, 37) + '…' : lab));
+        const end = x.actual || x.forecast;
+        const late = x.status === 'Late' || x.status === 'Past baseline' || x.status === 'Past forecast';
+        const col = x.status === 'Achieved' ? css('--good-solid') : late ? css('--bad-solid') : css('--s1');
+        if (x.baseline && end) svg.appendChild(s('line', { x1: X(x.baseline), x2: X(end), y1: y, y2: y, stroke: col, 'stroke-width': 3, opacity: 0.45, 'stroke-linecap': 'round' }));
+        if (x.baseline) svg.appendChild(s('circle', { cx: X(x.baseline), cy: y, r: 5, fill: css('--surface'), stroke: css('--chart-ref'), 'stroke-width': 2 }));
+        const dot = end ? s('circle', { cx: X(end), cy: y, r: 6, fill: col }) : null;
+        if (dot) svg.appendChild(dot);
+        const hit = s('rect', { x: lw, y: y - rowH / 2, width: W - lw, height: rowH, fill: 'transparent' });
+        hit.addEventListener('mousemove', (ev) => showTip(box, ev, [lab, 'Baseline ' + F.date(x.baseline) + ' · ' + (x.actual ? 'actual ' + F.date(x.actual) : 'forecast ' + F.date(x.forecast)), x.status + (x.variance ? ' · ' + (x.variance > 0 ? '+' : '') + x.variance + ' days' : '')]));
+        hit.addEventListener('mouseleave', () => hideTip(box));
+        hit.addEventListener('click', () => openRecord('Milestones', D('Milestones').find((r) => r.id === x.id)));
+        hit.style.cursor = 'pointer';
+        svg.appendChild(hit);
+      });
+      box.prepend(svg);
+    });
+    return box;
+  }
+
+  function ageingBar(n) {
+    const b = n.bands, edges = n.bandEdges;
+    const parts = [
+      ['Not yet due', b.notPast, css('--good-solid')],
+      ['1–' + edges[0] + ' d late', b.b1, '#F5C26B'],
+      [(edges[0] + 1) + '–' + edges[1] + ' d', b.b2, css('--warn-solid')],
+      [(edges[1] + 1) + '–' + edges[2] + ' d', b.b3, '#E8590C'],
+      ['> ' + edges[2] + ' d', b.over, css('--bad-solid')],
+      ['No expected date', b.noDate, css('--grey-solid')],
+    ];
+    const total = parts.reduce((a, p) => a + p[1], 0);
+    const bar = h('div', { class: 'stackbar', role: 'img', 'aria-label': parts.map((p) => p[0] + ' ' + p[1]).join(', ') });
+    parts.forEach((p) => { if (p[1]) bar.appendChild(h('span', { style: { width: (100 * p[1]) / total + '%', background: p[2] }, title: p[0] + ': ' + p[1] })); });
+    return h('div', { style: { display: 'flex', flexDirection: 'column', gap: '8px' } }, total ? bar : h('div', { class: 'muted small' }, 'No open NCR / OBS.'),
+      h('div', { class: 'legend' }, parts.filter((p) => p[1]).map((p) => h('span', null, h('i', { style: { background: p[2] } }), p[0] + ' ', h('b', { class: 'num' }, String(p[1]))))));
+  }
+
+  function capaBar(c) {
+    if (!c.n) return h('span', { class: 'muted small' }, 'No CAPA checks recorded');
+    const col = c.state === 'good' ? css('--good-solid') : c.state === 'watch' ? css('--warn-solid') : css('--bad-solid');
+    return h('div', { style: { display: 'flex', flexDirection: 'column', gap: '5px', minWidth: '150px' } },
+      h('div', { class: 'small' }, h('b', { class: 'num' }, F.pct(c.p)), h('span', { class: 'muted' }, ' (95% CI ' + F.pct(c.lo) + '–' + F.pct(c.hi) + ', n = ' + c.n + ')')),
+      h('div', { class: 'bar-int', title: 'Wilson 95% interval; the black tick is the ' + F.pct(c.target) + ' reference' },
+        h('span', { class: 'ci', style: { left: c.lo * 100 + '%', width: (c.hi - c.lo) * 100 + '%', background: col } }),
+        h('span', { class: 'pt', style: { left: c.p * 100 + '%', background: col } }),
+        h('span', { class: 'ref', style: { left: c.target * 100 + '%' } })));
+  }
+
+  /* =====================================================================
+     Views
+     ===================================================================== */
+  const VIEWS = {};
+
+  /* ---------------- Command Centre ---------------- */
+  VIEWS.command = function (c) {
+    const d = B().dashboard;
+    setCrumb('Command Centre', 'Dashboard · ' + B().config.orgName);
+    const P = d.programmes.find((p) => p.programme === S.prog) || d.programmes[0];
+    const heat = d.heat.filter((r) => inProg(r.projectId));
+    const alerts = d.alerts.filter((a) => (a.projectId ? inProg(a.projectId) : S.prog === 'Portfolio'));
+    const escs = D('Escalations').filter((e) => e.status === 'Open' && (e.level === 'B' || e.level === 'C') && inProg(e.projectId)).sort((a, b) => String(a.dueDate).localeCompare(String(b.dueDate)));
+    const counts = { Red: 0, Amber: 0, Green: 0, Grey: 0, 'Not assessed': 0 };
+    heat.forEach((r) => { counts[r.overall] = (counts[r.overall] || 0) + 1; });
+    const lc = B().lastChange;
+
+    c.appendChild(pageHead('Command Centre', 'HQ QA’s independent Level 4 position, the alerts and decisions that need management, and project performance (Level 2) kept separate and labelled.',
+      [progPills(), h('button', { class: 'btn', onclick: printPage }, icon('print'), 'Print')],
+      h('div', { class: 'meta-row' }, h('span', null, 'Records as of ' + F.date(B().asOf)), lc.at ? h('span', null, 'Last change ' + F.stamp(lc.at) + ' by ' + userName(lc.by)) : null, h('span', null, 'Alerts recalculated on every load'))));
+
+    // Hero
+    const total = heat.length || 1;
+    const ovColor = { Red: css('--bad-solid'), Amber: css('--warn-solid'), Green: css('--good-solid'), Grey: css('--grey-solid'), 'Not assessed': 'rgba(255,255,255,.4)' };
+    const cov = d.coverage;
+    const hero = h('div', { class: 'hero' },
+      h('section', { class: 'card hero-main', 'aria-label': 'Assurance position' },
+        h('div', null, h('div', { class: 'eyebrow' }, (S.prog === 'Portfolio' ? 'Portfolio' : S.prog === 'L4/L5' ? 'L4/L5 Projects' : S.prog) + ' · Level 4 assurance position'),
+          h('div', { class: 'big', style: { marginTop: '10px' } }, h('span', { class: 'dot', style: { background: ovColor[P.overall] } }), P.overall),
+          h('p', { style: { marginTop: '8px' } }, 'Worst applicable area across ' + P.projects + ' active project' + (P.projects === 1 ? '' : 's') + ' · ' + P.assessed + ' with an approved assessment')),
+        h('div', { style: { display: 'flex', flexDirection: 'column', gap: '10px' } },
+          h('div', { class: 'dist', role: 'img', 'aria-label': Object.keys(counts).map((k) => k + ' ' + counts[k]).join(', ') }, Object.keys(counts).map((k) => (counts[k] ? h('span', { style: { width: (100 * counts[k]) / total + '%', background: ovColor[k] } }) : null))),
+          h('div', { class: 'counts' }, Object.keys(counts).map((k) => h('span', null, h('b', null, String(counts[k])), k))))),
+      h('div', { class: 'grid g4' },
+        kpiTile('Open alerts', String(alerts.length), alerts.filter((a) => a.severity === 'Critical').length + ' critical · ' + alerts.filter((a) => a.severity === 'High').length + ' high', alerts.some((a) => a.severity === 'Critical') ? 'action' : alerts.length ? 'watch' : 'good', () => go('alerts')),
+        kpiTile('Assurance coverage', cov.pct === null ? '—' : F.pct(cov.pct), cov.done + ' of ' + cov.due + ' due assessments approved for ' + F.month(cov.period) + ' · target ' + B().config.coverageTarget + '%', cov.pct === null ? '' : cov.pct * 100 >= B().config.coverageTarget ? 'good' : 'action', () => go('assessments'), proptag()),
+        kpiTile('Decisions required', String(escs.length), 'Open Level B / C escalations · ' + escs.filter((e) => days(B().asOf, e.dueDate) < 0).length + ' overdue', escs.some((e) => days(B().asOf, e.dueDate) < 0) ? 'action' : escs.length ? 'watch' : 'good', () => go('Escalations')),
+        kpiTile('NCR / OBS past expected', P.ncr.pastPct === null ? '—' : F.pct(P.ncr.pastPct), P.ncr.pastExpected + ' of ' + P.ncr.open + ' open · ' + P.ncr.over90 + ' over ' + P.ncr.bandEdges[2] + ' days · median age ' + (P.ncr.medianAge === null ? '—' : Math.round(P.ncr.medianAge) + ' d'), P.ncr.over90 ? 'action' : P.ncr.pastExpected ? 'watch' : 'good', isStaff() ? () => go('NCRs') : null, l2tag())));
+    c.appendChild(hero);
+
+    // Programme cards
+    if (S.prog === 'Portfolio') {
+      const progs = d.programmes.filter((p) => p.programme !== 'Portfolio');
+      if (progs.length) c.appendChild(h('div', { class: 'grid g-auto' }, progs.map((p) => h('button', { class: 'card prog', onclick: () => { S.prog = p.programme; store.set('prog', p.programme); renderMain(); } },
+        h('div', { class: 'hd' }, h('b', null, p.programme === 'L4/L5' ? 'L4/L5 Projects' : p.programme === 'PML' ? 'Penang Mutiara Line' : p.programme === 'RTS' ? 'RTS Link' : p.programme), chip(p.overall)),
+        h('div', { class: 'stats' },
+          h('div', null, h('b', null, String(p.alerts.total)), h('span', null, 'alerts · ' + p.alerts.critical + ' critical')),
+          h('div', null, h('b', null, F.pct(p.ncr.pastPct)), h('span', null, 'NCR past expected')),
+          h('div', null, h('b', null, String(p.decisions)), h('span', null, 'decisions due'))),
+        p.top ? h('div', { class: 'issue' }, h('b', null, p.top.title), h('br'), h('span', { class: 'muted' }, p.top.detail)) : h('div', { class: 'issue none' }, 'No open alerts')))));
+    }
+
+    // Heat-map
+    c.appendChild(card('Level 4 heat-map — ten assurance areas', 'Latest approved assessment per project. Overall = worst applicable area; Grey counts as Amber; Grey overall when more than a third of areas are Grey. Select a cell for its evidence.',
+      heat.length ? h('div', { style: { display: 'flex', flexDirection: 'column', gap: '12px' } }, heatTable(heat), heatLegend()) : empty('No active projects in this programme.'),
+      { foot: 'Method: RMM v1.0 §9. Head – QA may moderate the overall by one level with a recorded rationale (*). Red means management intervention or heightened assurance is required, not that the project has failed.' }));
+
+    // Alerts + decisions
+    c.appendChild(h('div', { class: 'grid g2' },
+      card('Key alerts', 'Open Critical and High alerts, earliest first', alertList(alerts.filter((a) => a.severity === 'Critical' || a.severity === 'High'), 7), { foot: 'Rule-based: NCR ageing past the top band, responses and effectiveness checks overdue, escalations without response, critical milestones at risk, assessments overdue.' }),
+      card('Decisions required from management', 'Level C to senior management · Level B to the Project Director. HQ QA escalates and verifies; the project owns the action.', decisionList(escs))));
+
+    // NCR & CAPA
+    const progRows = (S.prog === 'Portfolio' ? d.programmes.filter((p) => p.programme !== 'Portfolio') : [P]);
+    const ntb = h('tbody');
+    progRows.forEach((p) => ntb.appendChild(h('tr', null,
+      h('td', null, h('b', null, p.programme === 'L4/L5' ? 'L4/L5 Projects' : p.programme)),
+      h('td', { class: 'num' }, F.int(p.ncr.open)),
+      h('td', { class: 'num' }, F.pct(p.ncr.pastPct)),
+      h('td', { class: 'num' }, F.int(p.ncr.over90)),
+      h('td', { class: 'num' }, p.ncr.medianAge === null ? '—' : Math.round(p.ncr.medianAge) + ' d'),
+      h('td', { class: 'num' }, F.int(p.ncr.awaiting)),
+      h('td', null, p.ncr.repeat ? h('span', { class: 'chip st-Red' }, p.ncr.repeat + ' repeat') : h('span', { class: 'muted' }, 'None')),
+      h('td', null, capaBar(p.ncr.capa)))));
+    c.appendChild(card('NCR & CAPA by programme', 'Project NCR / OBS references and HQ QA’s check of CAPA effectiveness.',
+      h('div', { class: 'tbl-wrap inner-tbl' }, h('table', { class: 'tbl compact' }, h('thead', null, h('tr', null, h('th', null, 'Programme'), h('th', { class: 'num' }, 'Open'), h('th', { class: 'num' }, 'Past expected'), h('th', { class: 'num' }, '> ' + P.ncr.bandEdges[2] + ' d'), h('th', { class: 'num' }, 'Median age'), h('th', { class: 'num' }, 'Awaiting response'), h('th', null, 'Repeat'), h('th', null, 'CAPA verified effective'))), ntb)),
+      { right: h('span', { class: 'tags' }, l2tag(), proptag()), foot: 'CAPA is Green only when the Wilson 95% lower bound reaches ' + B().config.capaTarget + '%. NCR status is the project’s; HQ QA shows its adequacy and effectiveness assessment beside it (DR-03).' }));
+    c.appendChild(h('div', { class: 'grid g2' },
+      card('Ageing past expected completion', 'Open NCR / OBS by days past expected completion' + (S.prog === 'Portfolio' ? ', all programmes' : ''), ageingBar(P.ncr), { right: h('span', { class: 'tags' }, l2tag(), proptag()) }),
+      card('NCR / OBS raised per month', 'c-chart, last 12 months: centre line c̄ and UCL = c̄ + 3√c̄. Red bar = special cause.', cchart(S.prog === 'Portfolio' ? d.monthly : monthlyFor(S.prog)), { right: l2tag() })));
+
+    // Milestones
+    const ms = d.milestones.filter((m) => inProg(m.projectId));
+    c.appendChild(card('Critical milestones — baseline vs forecast', 'Hollow dot = baseline · filled dot = forecast or actual (red when later than baseline). Schedule variance = forecast − baseline.', dumbbell(ms), { right: h('span', { class: 'small muted' }, ms.filter((m) => m.status === 'Late' || m.status === 'Past baseline' || m.status === 'Past forecast').length + ' at risk of ' + ms.length) }));
+
+    c.appendChild(h('p', { class: 'method' }, 'Prepared independently by the QA Unit for management and internal use. It does not stop work; authority stays with the Project Director. No personal results are shown on this page (DR-07).'));
+  };
+
+  function monthlyFor(prog) {
+    const ids = D('Projects').filter((p) => p.programme === prog).map((p) => p.id);
+    const all = D('NCRs').filter((r) => ids.indexOf(r.projectId) >= 0);
+    const end = B().asOf.slice(0, 7), months = [];
+    for (let i = 11; i >= 0; i--) months.push(shiftPeriod(end, -i));
+    const raised = months.map((m) => all.filter((r) => r.status !== 'Cancelled' && String(r.raisedDate).slice(0, 7) === m).length);
+    const closed = months.map((m) => all.filter((r) => String(r.closedDate).slice(0, 7) === m).length);
+    const cl = raised.reduce((a, b) => a + b, 0) / 12, ucl = cl + 3 * Math.sqrt(cl);
+    return { months: months, raised: raised, closed: closed, chart: { cl: cl, ucl: ucl, special: raised.map((v) => v > ucl) } };
+  }
+
+  function kpiTile(label, val, sub, state, onclick, tag) {
+    const col = state === 'good' ? 'var(--good)' : state === 'watch' ? 'var(--warn)' : state === 'action' ? 'var(--bad)' : 'var(--text)';
+    const el = h(onclick ? 'button' : 'div', { class: 'card kpi' + (onclick ? ' click' : ''), style: onclick ? { textAlign: 'left', font: 'inherit' } : null, onclick: onclick || null },
+      h('div', { class: 'kpi-h' }, h('span', { class: 'lbl' }, label), tag || null),
+      h('div', { class: 'val', style: { color: col } }, val),
+      h('div', { class: 'sub' }, sub));
+    return el;
+  }
+
+  /* ---------------- My work ---------------- */
+  function myQueueCount() {
+    if (!S.boot || !isStaff()) return 0;
+    const mine = D('Tasks').filter((t) => isMe(t.assignee) && ['Accepted', 'Submitted'].indexOf(t.status) < 0).length;
+    const toApprove = isHQ() ? D('Assessments').filter((a) => a.state === 'Submitted').length + D('Tasks').filter((t) => t.status === 'Submitted').length : 0;
+    const returned = D('Assessments').filter((a) => a.state === 'Returned' && own(a.projectId)).length;
+    return mine + toApprove + returned;
+  }
+  VIEWS.mywork = function (c) {
+    setCrumb('My work', 'Dashboard');
+    c.appendChild(pageHead('Good ' + (new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 18 ? 'afternoon' : 'evening') + ', ' + String(me().name).replace(/\s*\(.*\)$/, '').split(' ')[0], 'Your tasks, the assessments and findings you look after, and the alerts that name you.', [
+      canCreate('Weekly') ? h('button', { class: 'btn', onclick: () => openRecord('Weekly', null) }, icon('week'), 'Weekly update') : null,
+      canCreate('Tasks') ? h('button', { class: 'btn primary', onclick: () => openRecord('Tasks', null) }, icon('plus'), 'New task') : null,
+    ]));
+    const asOf = B().asOf;
+    const myTasks = D('Tasks').filter((t) => isMe(t.assignee) && t.status !== 'Accepted').sort((a, b) => String(a.due || '9').localeCompare(String(b.due || '9')));
+    const myAlerts = B().dashboard.alerts.filter((a) => isMe(a.owner));
+    const myProjects = D('Projects').filter((p) => own(p.id) && p.status === 'Active');
+    const myAss = D('Assessments').filter((a) => own(a.projectId) && (a.state === 'Draft' || a.state === 'Returned'));
+    const myFind = D('Findings').filter((f) => isMe(f.qaOwner) && ['Closed', 'Verified effective'].indexOf(f.status) < 0);
+
+    const overdue = myTasks.filter((t) => t.due && days(t.due, asOf) > 0 && t.status !== 'Submitted').length;
+    c.appendChild(h('div', { class: 'grid g4' },
+      kpiTile('My open tasks', String(myTasks.length), overdue + ' overdue', overdue ? 'action' : myTasks.length ? 'watch' : 'good', () => go('Tasks', { mine: true })),
+      kpiTile('Alerts naming me', String(myAlerts.length), myAlerts.filter((a) => a.severity === 'Critical' || a.severity === 'High').length + ' critical or high', myAlerts.length ? 'watch' : 'good', () => go('alerts', { mine: true })),
+      kpiTile('Assessments to finish', String(myAss.length), myAss.filter((a) => a.state === 'Returned').length + ' returned for correction', myAss.some((a) => a.state === 'Returned') ? 'action' : myAss.length ? 'watch' : 'good', () => go('assessments')),
+      kpiTile('Findings I monitor', String(myFind.length), myFind.filter((f) => f.responseDue && days(f.responseDue, asOf) > 0 && f.status === 'Open').length + ' past response date', '', () => go('Findings', { mine: true }))));
+
+    if (isHQ()) {
+      const subA = D('Assessments').filter((a) => a.state === 'Submitted');
+      const subT = D('Tasks').filter((t) => t.status === 'Submitted');
+      const q = h('div', { class: 'list' });
+      subA.forEach((a) => q.appendChild(h('button', { class: 'li', onclick: () => go('assessment', { id: a.id }) }, chip('Submitted'), h('span', { class: 'body' }, h('b', null, 'Level 4 assessment ' + a.id + ' — ' + projLabel(a.projectId) + ', ' + F.month(a.period)), h('span', { class: 'small muted' }, 'Overall ' + a.overall + ' · submitted ' + F.stamp(a.submittedAt) + ' by ' + userName(a.updatedBy))), h('span', { class: 'side-r' }, 'Approve or return'))));
+      subT.forEach((t) => q.appendChild(h('button', { class: 'li', onclick: () => openRecord('Tasks', t) }, chip('Submitted'), h('span', { class: 'body' }, h('b', null, t.title), h('span', { class: 'small muted' }, userName(t.assignee) + (t.due ? ' · due ' + F.date(t.due) : ''))), h('span', { class: 'side-r' }, 'Accept or return'))));
+      c.appendChild(card('Waiting for your approval', subA.length + subT.length + ' item' + (subA.length + subT.length === 1 ? '' : 's'), subA.length + subT.length ? q : empty('Nothing is waiting for your approval.', 'check')));
+    }
+
+    const tl = h('div', { class: 'list' });
+    myTasks.forEach((t) => {
+      const dd = t.due ? days(asOf, t.due) : null;
+      tl.appendChild(h('button', { class: 'li', onclick: () => openRecord('Tasks', t) }, chip(t.status), h('span', { class: 'body' }, h('b', null, t.title), h('span', { class: 'small muted' }, (t.projectId ? projLabel(t.projectId) + ' · ' : '') + (t.func || '') + (t.priority === 'High' ? ' · High priority' : ''))),
+        h('span', { class: 'side-r' }, dd === null ? 'No due date' : h('span', { class: 'chip plain ' + (dd < 0 && t.status !== 'Submitted' ? 'st-Red' : dd <= 7 ? 'st-Amber' : '') }, dd < 0 ? Math.abs(dd) + ' d overdue' : dd === 0 ? 'Due today' : 'Due in ' + dd + ' d'))));
+    });
+    c.appendChild(h('div', { class: 'grid g2' },
+      card('My tasks', null, myTasks.length ? tl : empty('No open tasks.', 'check')),
+      card('Alerts naming me', null, alertList(myAlerts, 8))));
+
+    const pl = h('div', { class: 'list' });
+    myProjects.forEach((p) => {
+      const hr = B().dashboard.heat.find((x) => x.projectId === p.id);
+      pl.appendChild(h('button', { class: 'li', onclick: () => go('project', { id: p.id }) }, chip(hr ? hr.overall : 'Not assessed'), h('span', { class: 'body' }, h('b', null, p.code + ' — ' + p.name), h('span', { class: 'small muted' }, p.programme + ' · Tier ' + p.tier + ' · ' + (isMe(p.lead) ? 'QA lead' : 'QA deputy'))), h('span', { class: 'side-r' }, hr && hr.period ? F.month(hr.period) : '')));
+    });
+    c.appendChild(card('My allocated projects', myProjects.length + ' active', myProjects.length ? pl : empty('No projects are allocated to you yet. Head – QA allocates projects in the project register.', 'folder')));
+  };
+
+  /* ---------------- Alerts ---------------- */
+  VIEWS.alerts = function (c) {
+    setCrumb('Alerts', 'Work & reporting');
+    const f = S.filters.alerts || (S.filters.alerts = { sev: 'All', band: 'All', mine: !!S.params.mine });
+    let al = B().dashboard.alerts.filter((a) => (a.projectId ? inProg(a.projectId) : S.prog === 'Portfolio'));
+    if (f.sev !== 'All') al = al.filter((a) => (f.sev === 'Critical + High' ? a.severity === 'Critical' || a.severity === 'High' : a.severity === f.sev));
+    if (f.band !== 'All') al = al.filter((a) => a.band === f.band);
+    if (f.mine) al = al.filter((a) => isMe(a.owner));
+    const bands = ['All'].concat(Array.from(new Set(B().dashboard.alerts.map((a) => a.band))));
+    c.appendChild(pageHead('Alerts', 'Raised from the records on every load, and cleared automatically when the condition is resolved. Select an alert to open the record behind it.', [progPills()]));
+    c.appendChild(h('div', { class: 'toolbar' },
+      selectBox('Severity', ['All', 'Critical + High', 'Critical', 'High', 'Medium', 'Low'], f.sev, (v) => { f.sev = v; renderMain(); }),
+      selectBox('Band', bands, f.band, (v) => { f.band = v; renderMain(); }),
+      isStaff() ? h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: f.mine, onchange: (e) => { f.mine = e.target.checked; renderMain(); } }), 'Only alerts naming me') : null,
+      h('div', { class: 'sp' }), h('span', { class: 'muted small' }, al.length + ' shown')));
+    c.appendChild(h('section', { class: 'card' }, h('div', { class: 'cb' }, alertList(al))));
+  };
+
+  function selectBox(label, options, value, onchange) {
+    const id = 'sel-' + label.replace(/\W+/g, '');
+    return h('span', { style: { display: 'inline-flex', alignItems: 'center', gap: '6px' } }, h('label', { for: id, class: 'small muted' }, label),
+      h('select', { id: id, class: 'input', style: { width: 'auto', minHeight: '34px', paddingTop: '4px', paddingBottom: '4px' }, onchange: (e) => onchange(e.target.value) },
+        options.map((o) => { const v = typeof o === 'object' ? o.v : o, l = typeof o === 'object' ? o.l : o; return h('option', { value: v, selected: v === value ? true : null }, l); })));
+  }
+
+  /* ---------------- Heat-map & assessments ---------------- */
+  VIEWS.assessments = function (c) {
+    setCrumb('Heat-map & assessments', 'Assurance assessment');
+    const f = S.filters.ass || (S.filters.ass = { state: 'All', projectId: S.params.projectId || '' });
+    if (S.params.projectId) f.projectId = S.params.projectId;
+    c.appendChild(pageHead('Level 4 heat-map and assessments', 'HQ QA’s independent conclusion on each project against the ten areas. Tier 1 monthly, Tier 2 quarterly, Tier 3 at milestones. Submit by working day 3; approval by working day 5.', [
+      progPills(),
+      canCreate('Assessments') ? h('button', { class: 'btn primary', onclick: () => go('assessment', { id: null, projectId: f.projectId || null }) }, icon('plus'), 'Start an assessment') : null,
+    ]));
+    const heat = B().dashboard.heat.filter((r) => inProg(r.projectId));
+    c.appendChild(card('Portfolio heat-map', 'Latest approved assessment per active project', heat.length ? h('div', { style: { display: 'flex', flexDirection: 'column', gap: '12px' } }, heatTable(heat), heatLegend()) : empty('No active projects.')));
+    const cov = B().dashboard.coverage;
+    if (cov.missing.length && isStaff()) c.appendChild(h('div', { class: 'banner warn' }, icon('alert'), 'Not yet approved for ' + F.month(cov.period) + ': ' + cov.missing.map(projLabel).join(', ') + '.'));
+    let rows = D('Assessments').filter((a) => inProg(a.projectId));
+    if (f.state !== 'All') rows = rows.filter((a) => a.state === f.state);
+    if (f.projectId) rows = rows.filter((a) => a.projectId === f.projectId);
+    rows.sort((a, b) => (a.period < b.period ? 1 : a.period > b.period ? -1 : String(projLabel(a.projectId)).localeCompare(projLabel(b.projectId))));
+    const tb = h('tbody');
+    rows.forEach((a) => tb.appendChild(h('tr', { class: 'click', tabindex: '0', onclick: () => go('assessment', { id: a.id }), onkeydown: (e) => { if (e.key === 'Enter') go('assessment', { id: a.id }); } },
+      h('td', { class: 'mono' }, a.id), h('td', null, h('b', null, projLabel(a.projectId))), h('td', null, F.month(a.period)),
+      h('td', null, h('span', { style: { display: 'inline-flex', gap: '2px' } }, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((i) => h('span', { class: 'cell ' + CELL_CLASS(a['a' + i]), style: { height: '20px', minWidth: '20px', fontSize: '10px', borderRadius: '4px' }, title: B().areas[i - 1].title + ': ' + a['a' + i] }, CELL_TXT[a['a' + i]] || '·')))),
+      h('td', null, chip(a.final || a.overall)), h('td', null, chip(a.state)), h('td', { class: 'small muted' }, a.state === 'Approved' ? 'Approved ' + F.stamp(a.approvedAt) : 'Updated ' + F.stamp(a.updatedAt) + ' · ' + userName(a.updatedBy)))));
+    c.appendChild(h('div', { class: 'toolbar' },
+      selectBox('State', ['All', 'Draft', 'Submitted', 'Returned', 'Approved'], f.state, (v) => { f.state = v; renderMain(); }),
+      selectBox('Project', [{ v: '', l: 'All projects' }].concat(D('Projects').filter((p) => inProg(p.id)).map((p) => ({ v: p.id, l: p.code }))), f.projectId, (v) => { f.projectId = v; S.params.projectId = v; renderMain(); }),
+      h('div', { class: 'sp' }), h('span', { class: 'muted small' }, rows.length + ' assessments')));
+    c.appendChild(rows.length ? h('div', { class: 'tbl-wrap' }, h('table', { class: 'tbl' }, h('thead', null, h('tr', null, ['Ref', 'Project', 'Period', 'Ten areas', 'Overall', 'State', ''].map((x) => h('th', null, x)))), tb)) : h('section', { class: 'card' }, empty('No assessments match.')));
+  };
+
+  /* ---------------- Assessment editor ---------------- */
+  VIEWS.assessment = function (c) {
+    const asOf = B().asOf;
+    let rec = S.params.id ? D('Assessments').find((a) => a.id === S.params.id) : null;
+    if (S.params.id && !rec) { c.appendChild(card('Assessment not found', null, h('p', null, 'It may have been deleted.'))); return; }
+    const draft = S.params.draft || (S.params.draft = rec ? JSON.parse(JSON.stringify(rec)) : (() => {
+      const o = { projectId: S.params.projectId || '', period: shiftPeriod(asOf.slice(0, 7), -1), confidence: 'Moderate', evidence: [] };
+      for (let i = 1; i <= 10; i++) o['a' + i] = 'Grey';
+      if (!o.projectId) { const mine = D('Projects').filter((p) => p.status === 'Active' && (isHQ() || own(p.id))); if (mine.length === 1) o.projectId = mine[0].id; }
+      return o;
+    })());
+    const state = rec ? rec.state : 'New';
+    // At review (Submitted) Head – QA moderates; the assessor's ratings and evidence stay as submitted.
+    const editable = (rec ? canEdit('Assessments', rec) : canCreate('Assessments')) && state !== 'Submitted';
+    const p = projById(draft.projectId);
+    setCrumb(rec ? rec.id + ' · ' + (p ? p.code : '') + ' · ' + F.month(rec.period) : 'New Level 4 assessment', 'Assurance assessment › Heat-map & assessments');
+
+    const statuses = () => { const o = []; for (let i = 1; i <= 10; i++) o.push(draft['a' + i] || 'Grey'); return o; };
+    const overallNow = () => overallFromAreas(statuses());
+    const ovBox = h('div');
+    const drawOverall = () => {
+      const ov = overallNow(), st = statuses().filter((x) => x !== 'N/A');
+      const fin = draft.moderatedTo || ov;
+      ovBox.replaceChildren(
+        h('div', { style: { display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' } }, h('span', { class: 'cell ov ' + CELL_CLASS(fin === 'Not assessed' ? null : fin), style: { height: '44px', minWidth: '120px', fontSize: '16px' } }, fin), draft.moderatedTo ? h('span', { class: 'small muted' }, 'moderated from ' + ov) : null),
+        h('div', { class: 'small muted', style: { marginTop: '10px' } }, st.length + ' applicable areas · ' + ['Red', 'Amber', 'Green', 'Grey'].map((k) => st.filter((x) => x === k).length + ' ' + k).join(' · ')),
+        h('div', { class: 'method', style: { marginTop: '6px' } }, ov === 'Grey' ? 'More than a third of applicable areas are Grey (limited evidence), so the overall is Grey.' : ov === 'Red' ? 'At least one applicable area is Red.' : ov === 'Amber' ? 'Worst applicable area is Amber (Grey counts as Amber).' : ov === 'Green' ? 'Every applicable area is Green.' : 'Set at least one area.'));
+    };
+
+    // context from the records
+    const ctxFor = (n) => {
+      if (!draft.projectId) return '';
+      const pid = draft.projectId, pr = projById(pid);
+      const fs = D('Findings').filter((f) => f.projectId === pid && String(f.area) === String(n) && ['Closed', 'Verified effective'].indexOf(f.status) < 0);
+      const parts = [];
+      if (fs.length) parts.push(fs.length + ' open finding' + (fs.length > 1 ? 's' : '') + ' (' + fs.map((f) => f.id + ' ' + f.severity).join(', ') + ')');
+      if (n === 1 && pr) parts.push('PQP: ' + (pr.pqp || 'not recorded'));
+      if (n === 4 || n === 5) {
+        const all = D('NCRs').filter((r) => r.projectId === pid);
+        if (all.length) {
+          const open = all.filter((r) => r.status === 'Open');
+          const past = open.filter((r) => r.expectedDate && days(r.expectedDate, asOf) > 0);
+          if (n === 4) parts.push(open.length + ' open NCR/OBS, ' + past.length + ' past expected, ' + open.filter((r) => r.expectedDate && days(r.expectedDate, asOf) > B().config.ncrBand3).length + ' over ' + B().config.ncrBand3 + ' d');
+          if (n === 5) { const ch = all.filter((r) => r.capaCheck === 'Effective' || r.capaCheck === 'Not effective'); parts.push(ch.length ? 'CAPA checked effective ' + ch.filter((r) => r.capaCheck === 'Effective').length + ' of ' + ch.length : 'No CAPA checks recorded'); const rp = all.filter((r) => r.repeat && r.status === 'Open').length; if (rp) parts.push(rp + ' open repeat NCRs'); }
+        }
+      }
+      if (n === 10) { const ms = D('Milestones').filter((m) => m.projectId === pid && !m.actual && m.baseline && (m.forecast ? m.forecast > m.baseline : m.baseline < asOf)); if (ms.length) parts.push(ms.length + ' critical milestone' + (ms.length > 1 ? 's' : '') + ' late'); }
+      return parts.join(' · ');
+    };
+
+    const areaList = h('div', { class: 'areas' });
+    B().areas.forEach((a, i) => {
+      const k = 'a' + a.n;
+      const seg = h('div', { class: 'seg', role: 'radiogroup', 'aria-label': a.title, 'aria-disabled': editable ? null : 'true' });
+      const ev = h('textarea', { class: 'input', rows: 2, placeholder: 'Evidence basis — record references, sample checked, what was seen', 'aria-label': 'Evidence for ' + a.title, disabled: editable ? null : true, oninput: (e) => { draft.evidence[i] = e.target.value; } });
+      ev.value = (draft.evidence || [])[i] || '';
+      const drawSeg = () => {
+        seg.replaceChildren(...['Green', 'Amber', 'Red', 'Grey', 'N/A'].map((v) => h('button', {
+          type: 'button', role: 'radio', class: CELL_CLASS(v), 'aria-pressed': String(draft[k] === v), 'aria-checked': String(draft[k] === v), title: v === 'Grey' ? 'Grey — limited evidence' : v,
+          onclick: () => { if (!editable) return; draft[k] = v; drawSeg(); drawOverall(); },
+        }, v === 'Grey' ? 'Grey' : v === 'N/A' ? 'N/A' : v.charAt(0))));
+      };
+      drawSeg();
+      const ctx = ctxFor(a.n);
+      const row = h('div', { class: 'area', id: 'area-' + a.n },
+        h('div', { class: 'n' }, String(a.n)),
+        h('div', { class: 'nm' }, h('b', null, a.title), ctx ? h('span', { class: 'small muted' }, 'From the records: ' + ctx) : null),
+        seg,
+        h('div', { class: 'ev' }, ev));
+      areaList.appendChild(row);
+    });
+
+    const fld = (k) => fieldOf('Assessments', k);
+    const txt = (k, rows) => {
+      const t = h('textarea', { class: 'input', rows: rows || 3, id: 'f-' + k, disabled: editable ? null : true, oninput: (e) => { draft[k] = e.target.value; } });
+      t.value = draft[k] || '';
+      return h('div', { class: 'field full' }, h('label', { for: 'f-' + k }, fld(k).label), t);
+    };
+    const projSel = h('select', { class: 'input', id: 'f-projectId', disabled: !editable || (rec && rec.state !== 'Draft') ? true : null, onchange: (e) => { draft.projectId = e.target.value; renderMain(); } },
+      h('option', { value: '' }, 'Choose a project'), optionsFor('Assessments', fld('projectId'), rec).map((o) => h('option', { value: o.v, selected: o.v === draft.projectId ? true : null }, o.l)));
+    const perIn = h('input', { class: 'input', type: 'month', id: 'f-period', value: draft.period, disabled: !editable || (rec && rec.state !== 'Draft') ? true : null, onchange: (e) => { draft.period = e.target.value; } });
+    const conf = h('select', { class: 'input', id: 'f-confidence', disabled: editable ? null : true, onchange: (e) => { draft.confidence = e.target.value; } }, ['High', 'Moderate', 'Limited'].map((o) => h('option', { value: o, selected: draft.confidence === o ? true : null }, o)));
+    const valSel = h('select', { class: 'input', id: 'f-validator', disabled: editable ? null : true, onchange: (e) => { draft.validator = e.target.value; } }, h('option', { value: '' }, '—'), optionsFor('Assessments', fld('validator')).map((o) => h('option', { value: o.v, selected: o.v === draft.validator ? true : null }, o.l)));
+
+    const steps = ['Draft', 'Submitted', 'Approved'];
+    const stepIdx = state === 'Approved' ? 2 : state === 'Submitted' ? 1 : 0;
+    const stepBar = h('div', { class: 'steps', 'aria-label': 'Workflow' }, steps.map((x, i) => h('span', { class: i < stepIdx ? 'done' : i === stepIdx ? 'on' : '' }, (i + 1) + '. ' + (x === 'Draft' && state === 'Returned' ? 'Returned' : x))));
+
+    const busy = (b, on) => { b.disabled = on; };
+    const doSave = (then) => {
+      if (!draft.projectId) { toast('Choose a project first.', 'err'); return Promise.reject(); }
+      const payload = Object.assign({}, draft);
+      return call('save', { table: 'Assessments', record: payload }).then((r) => { patch('Assessments', r); S.params.id = r.id; S.params.draft = JSON.parse(JSON.stringify(r)); if (then) return then(r); toast('Saved ' + r.id, 'ok'); renderMain(); return r; });
+    };
+    const acts = [];
+    if (editable && (state === 'New' || state === 'Draft' || state === 'Returned')) {
+      const bs = h('button', { class: 'btn', onclick: () => { busy(bs, true); doSave().catch(fail).finally(() => busy(bs, false)); } }, 'Save draft');
+      const bsub = h('button', { class: 'btn primary', onclick: () => { busy(bsub, true); doSave((r) => call('assessmentSubmit', { id: r.id, rev: r.rev })).then((r) => { if (!r) return; patch('Assessments', r); S.params.draft = JSON.parse(JSON.stringify(r)); toast('Submitted to Head – QA for approval', 'ok'); refresh(); }).catch(fail).finally(() => busy(bsub, false)); } }, 'Submit for approval');
+      acts.push(bs, bsub);
+    }
+    if (rec && isHQ() && state === 'Submitted') {
+      const bsv = h('button', { class: 'btn', onclick: () => { busy(bsv, true); doSave().catch(fail).finally(() => busy(bsv, false)); } }, 'Save moderation');
+      const bret = h('button', { class: 'btn danger', onclick: () => promptBox('Return for correction', 'Say what needs to change. The assessor sees this note.', 'Return').then((note) => { if (!note) return; call('assessmentReturn', { id: rec.id, rev: rec.rev, note: note }).then((r) => { patch('Assessments', r); S.params.draft = JSON.parse(JSON.stringify(r)); toast('Returned to the assessor', 'ok'); refresh(); }).catch(fail); }) }, 'Return');
+      const bok = h('button', { class: 'btn good', onclick: () => confirmBox('Approve this assessment?', 'Approval freezes ' + rec.id + ' as HQ QA’s Level 4 conclusion for ' + projLabel(rec.projectId) + ', ' + F.month(rec.period) + ' (overall ' + (draft.moderatedTo || overallNow()) + '). Unsaved moderation changes are saved first.', 'Approve').then((y) => { if (!y) return; doSave((r) => call('assessmentApprove', { id: r.id, rev: r.rev })).then((r) => { patch('Assessments', r); S.params.draft = JSON.parse(JSON.stringify(r)); toast('Approved — the heat-map now shows ' + r.final, 'ok'); refresh(); }).catch(fail); }) }, 'Approve');
+      acts.push(bsv, bret, bok);
+    }
+    if (rec && isHQ() && state !== 'Approved') acts.push(h('button', { class: 'btn ghost danger', onclick: () => confirmBox('Delete ' + rec.id + '?', 'The draft is removed from the Sheet. The audit log keeps a copy.', 'Delete').then((y) => { if (y) call('remove', { table: 'Assessments', id: rec.id }).then(() => { unpatch('Assessments', rec.id); toast('Deleted', 'ok'); back(); refresh(); }).catch(fail); }) }, 'Delete'));
+
+    const moderation = isHQ() && (state === 'Submitted' || ((state === 'Draft' || state === 'New' || state === 'Returned') && editable))
+      ? card('Head – QA moderation', 'Move the overall by one level only, with a rationale (RMM §9.2).', h('div', { class: 'form' },
+          h('div', { class: 'field full' }, h('label', { for: 'f-mod' }, 'Moderated overall'), h('select', { class: 'input', id: 'f-mod', onchange: (e) => { draft.moderatedTo = e.target.value; drawOverall(); } }, ['', 'Green', 'Amber', 'Red'].map((o) => h('option', { value: o, selected: (draft.moderatedTo || '') === o ? true : null }, o || 'No moderation')))),
+          (() => { const t = h('textarea', { class: 'input', id: 'f-modnote', rows: 3, oninput: (e) => { draft.moderationNote = e.target.value; } }); t.value = draft.moderationNote || ''; return h('div', { class: 'field full' }, h('label', { for: 'f-modnote' }, 'Rationale'), t); })()))
+      : draft.moderatedTo ? card('Moderation', null, h('p', null, 'Moderated to ' + draft.moderatedTo + ': ' + (draft.moderationNote || ''))) : null;
+
+    c.appendChild(h('div', { class: 'toolbar no-print' }, h('button', { class: 'btn ghost', onclick: back }, icon('back'), 'Back'), h('div', { class: 'sp' }), acts));
+    c.appendChild(pageHead(rec ? (p ? p.code : '') + ' — Level 4 assessment, ' + F.month(rec.period) : 'New Level 4 assessment', p ? p.name + ' · ' + p.programme + ' · Tier ' + p.tier + (p.tierStatus === 'Provisional' ? ' (provisional)' : '') : 'Choose the project and period, rate each area and give the evidence basis.', null, h('div', { style: { display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' } }, stepBar, rec ? h('span', { class: 'xs muted' }, 'Rev ' + rec.rev + ' · updated ' + F.stamp(rec.updatedAt) + ' by ' + userName(rec.updatedBy)) : null)));
+    if (rec && rec.state === 'Returned' && rec.returnNote) c.appendChild(h('div', { class: 'banner warn' }, icon('alert'), 'Returned by Head – QA: ' + rec.returnNote));
+    if (!editable && rec && rec.state !== 'Approved' && isStaff()) c.appendChild(h('div', { class: 'banner info' }, icon('info'), rec.state === 'Submitted' ? (isHQ() ? 'Submitted for your approval. Review the ratings and evidence, moderate by one level if needed, then approve or return it.' : 'Submitted and waiting for Head – QA. It can no longer be edited by the assessor.') : 'You can view this assessment but not change it.'));
+
+    c.appendChild(h('div', { class: 'editor' },
+      h('div', { style: { display: 'flex', flexDirection: 'column', gap: '16px' } },
+        card('Project and period', null, h('div', { class: 'form' },
+          h('div', { class: 'field' }, h('label', { for: 'f-projectId' }, 'Project', h('span', { class: 'req' }, '*')), projSel),
+          h('div', { class: 'field' }, h('label', { for: 'f-period' }, 'Period', h('span', { class: 'req' }, '*')), perIn))),
+        card('Ten assurance areas', 'Criteria RMM v1.0 §9.1. Give the evidence basis for every area that is not Green or N/A — it is required to submit.', areaList)),
+      h('div', { class: 'sticky' },
+        card('Overall result', 'Worst applicable area', ovBox),
+        moderation,
+        card('Conclusion', null, h('div', { class: 'form' },
+          h('div', { class: 'field' }, h('label', { for: 'f-confidence' }, 'Confidence'), conf),
+          h('div', { class: 'field' }, h('label', { for: 'f-validator' }, 'Independent validator'), valSel),
+          txt('conclusion', 3), txt('reasons', 3), txt('limitations', 2))),
+        rec && rec.state === 'Approved' ? card('Approval', null, h('p', { class: 'small' }, 'Approved by ' + userName(rec.approvedBy) + ' on ' + F.stamp(rec.approvedAt) + '. Approved assessments are frozen as the record of assurance.')) : null)));
+    drawOverall();
+    if (S.params.area) setTimeout(() => { const el = $('#area-' + S.params.area); if (el) { el.scrollIntoView({ block: 'center' }); el.style.background = 'var(--accent-soft)'; setTimeout(() => { el.style.background = ''; }, 1600); } S.params.area = null; }, 50);
+  };
+
+  // Same rule as Rules.gs overallFromAreas (kept in step by the tests).
+  function overallFromAreas(statuses) {
+    const applicable = statuses.filter((x) => x && x !== 'N/A');
+    if (!applicable.length) return 'Not assessed';
+    const n = (k) => applicable.filter((x) => x === k).length;
+    const grey = n('Grey');
+    if (grey > applicable.length / 3) return 'Grey';
+    if (n('Red')) return 'Red';
+    if (n('Amber') + grey) return 'Amber';
+    return 'Green';
+  }
+
+  /* ---------------- Project page ---------------- */
+  VIEWS.project = function (c) {
+    const p = projById(S.params.id);
+    if (!p) { c.appendChild(card('Project not found', null, h('p', null, 'It may have been removed.'))); return; }
+    setCrumb(p.code, 'Projects › Project register');
+    const hr = B().dashboard.heat.find((x) => x.projectId === p.id);
+    const tab = S.params.tab || 'overview';
+    c.appendChild(h('div', { class: 'toolbar no-print' }, h('button', { class: 'btn ghost', onclick: back }, icon('back'), 'Back'), h('div', { class: 'sp' }),
+      canEdit('Projects', p) ? h('button', { class: 'btn', onclick: () => openRecord('Projects', p) }, 'Edit project') : h('button', { class: 'btn', onclick: () => openRecord('Projects', p) }, 'Project details'),
+      canCreate('Assessments') && (isHQ() || own(p.id)) ? h('button', { class: 'btn primary', onclick: () => go('assessment', { id: null, projectId: p.id }) }, icon('plus'), 'Start an assessment') : null));
+    c.appendChild(pageHead(p.code + ' — ' + p.name, null, null, h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' } },
+      chip(hr ? hr.overall : 'Not assessed', 'lg'), h('span', { class: 'chip plain' }, p.programme), h('span', { class: 'chip plain' }, 'Tier ' + p.tier + (p.tierStatus === 'Provisional' ? ' · provisional' : '')),
+      p.stage ? h('span', { class: 'chip plain' }, p.stage) : null, chip(p.status), h('span', { class: 'small muted' }, 'QA lead ' + userName(p.lead) + (p.deputy ? ' · deputy ' + userName(p.deputy) : '')))));
+    if (hr && hr.areas) c.appendChild(card('Latest approved Level 4 assessment — ' + F.month(hr.period), null, heatTable([hr], { compact: true })));
+    else c.appendChild(h('div', { class: 'banner info' }, icon('info'), 'No approved Level 4 assessment yet for this project.'));
+
+    const tabs = [['overview', 'Overview'], ['Findings', 'Findings'], ['NCRs', 'NCR & OBS'], ['Escalations', 'Escalations'], ['Milestones', 'Milestones'], ['Risks', 'Risks'], ['Assessments', 'Assessments'], ['Tasks', 'Tasks']]
+      .filter((t) => t[0] === 'overview' || (S.boot.data[t[0]] && (isStaff() || ['Escalations', 'Milestones', 'Risks', 'Assessments'].indexOf(t[0]) >= 0)));
+    c.appendChild(h('div', { class: 'tabs', role: 'tablist' }, tabs.map((t) => h('button', { role: 'tab', 'aria-selected': String(tab === t[0]), onclick: () => { S.params.tab = t[0]; renderMain(); } }, t[1] + (t[0] !== 'overview' ? ' (' + D(t[0]).filter((r) => r.projectId === p.id).length + ')' : '')))));
+    if (tab === 'overview') {
+      const ncr = D('NCRs').filter((r) => r.projectId === p.id);
+      const open = ncr.filter((r) => r.status === 'Open'), past = open.filter((r) => r.expectedDate && days(r.expectedDate, B().asOf) > 0);
+      const alerts = B().dashboard.alerts.filter((a) => a.projectId === p.id);
+      c.appendChild(h('div', { class: 'grid g4' },
+        kpiTile('Open alerts', String(alerts.length), alerts.filter((a) => a.severity === 'Critical').length + ' critical', alerts.some((a) => a.severity === 'Critical') ? 'action' : alerts.length ? 'watch' : 'good', null),
+        kpiTile('Open findings', String(D('Findings').filter((f) => f.projectId === p.id && ['Closed', 'Verified effective'].indexOf(f.status) < 0).length), 'HQ QA findings', '', null),
+        isStaff() ? kpiTile('NCR / OBS open', String(open.length), past.length + ' past expected completion', past.length ? 'watch' : 'good', null, l2tag()) : kpiTile('Open escalations', String(D('Escalations').filter((e) => e.projectId === p.id && e.status === 'Open').length), 'Level A–C', '', null),
+        kpiTile('PQP', p.pqp || '—', p.pqp === 'Approved' ? 'Project Quality Plan in place' : 'Level 4 area 1', p.pqp === 'Approved' || p.pqp === 'N/A' ? 'good' : 'action', null)));
+      c.appendChild(h('div', { class: 'grid g2' }, card('Alerts', null, alertList(alerts, 6)), card('Critical milestones', null, dumbbell(B().dashboard.milestones.filter((m) => m.projectId === p.id)))));
+    } else {
+      registerView(c, { table: tab, projectId: p.id, embedded: true });
+    }
+  };
+
+  /* ---------------- Generic register ---------------- */
+  const COMPUTED = {
+    NCRs: [{ k: '_late', label: 'Days past expected', num: true, val: (r) => (r.status === 'Open' && r.expectedDate ? Math.max(0, days(r.expectedDate, B().asOf)) : null), show: (v, r) => (v === null ? (r.status === 'Open' && !r.expectedDate ? h('span', { class: 'muted' }, 'no date') : '—') : v === 0 ? h('span', { class: 'muted' }, 'not due') : h('span', { class: 'chip plain ' + (v > B().config.ncrBand3 ? 'sev-Critical' : v > B().config.ncrBand1 ? 'st-Red' : 'st-Amber') }, v + ' d')) }],
+    Milestones: [{ k: '_st', label: 'Status', val: (r) => msStatus(r).status, show: (v) => chip(v) }, { k: '_var', label: 'Variance', num: true, val: (r) => msStatus(r).variance, show: (v) => (v === null ? '—' : (v > 0 ? '+' : '') + v + ' d') }],
+    Projects: [{ k: '_ov', label: 'Level 4', val: (r) => { const x = B().dashboard.heat.find((hh) => hh.projectId === r.id); return x ? x.overall : r.status === 'Active' ? 'Not assessed' : ''; }, show: (v) => (v ? chip(v) : '—') }],
+    Escalations: [{ k: '_due', label: 'Due in', num: true, val: (r) => (r.status === 'Open' ? days(B().asOf, r.dueDate) : null), show: (v) => (v === null ? '—' : h('span', { class: 'chip plain ' + (v < 0 ? 'st-Red' : v <= 7 ? 'st-Amber' : '') }, v < 0 ? Math.abs(v) + ' d overdue' : v + ' d')) }],
+  };
+  function msStatus(m) {
+    const asOf = B().asOf;
+    if (m.actual) return { status: 'Achieved', variance: m.baseline ? days(m.baseline, m.actual) : null };
+    if (m.baseline && m.forecast) { const v = days(m.baseline, m.forecast); if (v > 0) return { status: 'Late', variance: v }; if (days(m.forecast, asOf) > 0) return { status: 'Past forecast', variance: days(m.baseline, asOf) }; return { status: 'On track', variance: v }; }
+    if (m.baseline && days(m.baseline, asOf) > 0) return { status: 'Past baseline', variance: days(m.baseline, asOf) };
+    if (!m.forecast) return { status: 'Not reported', variance: null };
+    return { status: 'On track', variance: null };
+  }
+  function cellFor(t, f, r) {
+    const v = r[f.k];
+    if (f.type === 'project') return h('b', null, projLabel(v));
+    if (f.type === 'user') return userName(v);
+    if (f.type === 'date') return h('span', { class: 'num', style: { whiteSpace: 'nowrap' } }, F.date(v));
+    if (f.type === 'month') return F.month(v);
+    if (f.type === 'bool') return v ? 'Yes' : h('span', { class: 'muted' }, '—');
+    if (f.k === 'severity' || f.k === 'rating') return sevChip(v);
+    if (f.k === 'level') return lvl(v);
+    if (f.type === 'enum' && f.labels && f.labels[v]) return f.labels[v];
+    if (f.type === 'enum' && ['status', 'state', 'pqp', 'trend', 'control', 'overall', 'capaCheck'].indexOf(f.k) >= 0) return chip(v);
+    if (f.k === 'state' || f.k === 'overall') return chip(v);
+    if (f.type === 'longtext' || f.k === 'title' || f.k === 'item' || f.k === 'name') return h('span', { class: 'clip' }, v || '—');
+    return v === '' || v === null || v === undefined ? h('span', { class: 'muted' }, '—') : String(v);
+  }
+
+  const REG_DESC_EXTRA = {
+    Findings: 'Findings are HQ QA’s own. Contractor corrective actions stay with the responsible party; record their reference here.',
+  };
+
+  function registerView(c, opts) {
+    opts = opts || {};
+    const t = opts.table || S.view;
+    const sc = schema(t);
+    if (!sc) return;
+    if (!opts.embedded) setCrumb(sc.title, t === 'Users' ? 'System' : 'Registers');
+    const key = 'reg:' + t + (opts.embedded ? ':emb' : '');
+    const f = S.filters[key] || (S.filters[key] = { q: '', status: 'All', sort: null, dir: 1, mine: false });
+    if (S.params.mine && !opts.embedded) f.mine = true;
+    const statusField = sc.fields.find((x) => x.k === 'status' || x.k === 'state');
+    let rows = D(t).slice();
+    if (opts.projectId) rows = rows.filter((r) => r.projectId === opts.projectId);
+    else if (S.params.projectId && !opts.embedded) rows = rows.filter((r) => r.projectId === S.params.projectId);
+    if (!opts.embedded && sc.fields.some((x) => x.k === 'projectId')) rows = rows.filter((r) => !r.projectId || inProg(r.projectId));
+    if (t === 'Projects' && !opts.embedded) rows = rows.filter((r) => inProg(r.id));
+    if (f.status !== 'All' && statusField) rows = rows.filter((r) => (f.status === 'Open items' ? ['Closed', 'Accepted', 'Verified effective', 'Cancelled', 'Completed', 'Terminated'].indexOf(r[statusField.k]) < 0 : r[statusField.k] === f.status));
+    if (f.mine) rows = rows.filter((r) => isMe(r.assignee) || isMe(r.qaOwner) || isMe(r.owner) || isMe(r.lead) || isMe(r.deputy) || isMe(r.createdBy) || (r.projectId && own(r.projectId)));
+    if (f.q) {
+      const q = f.q.toLowerCase();
+      rows = rows.filter((r) => [r.id].concat(sc.fields.map((x) => (x.type === 'project' ? projLabel(r[x.k]) : x.type === 'user' ? userName(r[x.k]) : r[x.k]))).join(' ').toLowerCase().indexOf(q) >= 0);
+    }
+    const cols = sc.fields.filter((x) => x.list).map((x) => ({ k: x.k, label: x.label, f: x, num: x.type === 'number' }));
+    if (opts.projectId) { const i = cols.findIndex((x) => x.k === 'projectId'); if (i >= 0) cols.splice(i, 1); }
+    (COMPUTED[t] || []).forEach((x) => cols.push(x));
+    const valOf = (col, r) => (col.val ? col.val(r) : col.f.type === 'project' ? projLabel(r[col.k]) : col.f.type === 'user' ? userName(r[col.k]) : r[col.k]);
+    if (f.sort) {
+      const col = cols.find((x) => x.k === f.sort) || { k: f.sort, f: { type: 'text' } };
+      rows.sort((a, b) => { const x = valOf(col, a), y = valOf(col, b); return (x === y ? 0 : x === null || x === '' || x === undefined ? 1 : y === null || y === '' || y === undefined ? -1 : x > y ? 1 : -1) * f.dir; });
+    } else rows.sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
+
+    if (!opts.embedded) {
+      const acts = [
+        sc.fields.some((x) => x.k === 'projectId') || t === 'Projects' ? progPills() : null,
+        h('button', { class: 'btn', onclick: () => exportCsv(t, rows) }, icon('download'), 'Export CSV'),
+        canCreate(t) ? h('button', { class: 'btn primary', onclick: () => openRecord(t, null, { projectId: S.params.projectId }) }, icon('plus'), newLabel(t)) : null,
+      ];
+      c.appendChild(pageHead(sc.title, sc.describe + (REG_DESC_EXTRA[t] ? ' ' + REG_DESC_EXTRA[t] : ''), acts, sc.level2 ? h('div', null, l2tag()) : null));
+      if (sc.level2) c.appendChild(h('div', { class: 'banner info' }, icon('info'), 'Project NCRs and observations are Level 2 records owned by the project / contractor. Counts here are project performance, not HQ QA output (DR-02). HQ QA does not own or close them (DR-03).'));
+      if (t === 'NCRs') ncrInsights(c, rows);
+      if (S.params.projectId) c.appendChild(h('div', { class: 'banner info' }, icon('info'), 'Showing ' + projLabel(S.params.projectId) + ' only. ', h('button', { class: 'btn sm', onclick: () => { S.params.projectId = null; renderMain(); } }, 'Show all projects')));
+    } else if (canCreate(t) && (isHQ() || own(opts.projectId) || role() === 'CLERK')) {
+      c.appendChild(h('div', { class: 'toolbar' }, h('div', { class: 'sp' }), h('button', { class: 'btn primary sm', onclick: () => openRecord(t, null, { projectId: opts.projectId }) }, icon('plus'), newLabel(t))));
+    }
+
+    const search = h('input', { class: 'input', type: 'search', placeholder: 'Search ' + sc.title.toLowerCase(), value: f.q, 'aria-label': 'Search' });
+    search.addEventListener('input', debounce((e) => { f.q = e.target.value; renderMain(); setTimeout(() => { const el = $('#reg-search'); if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }, 0); }, 250));
+    search.id = 'reg-search';
+    if (!opts.embedded) c.appendChild(h('div', { class: 'toolbar' },
+      h('div', { class: 'search' }, icon('search'), search),
+      statusField ? selectBox('Status', ['All', 'Open items'].concat(statusField.options || (t === 'Assessments' ? ['Draft', 'Submitted', 'Returned', 'Approved'] : t === 'Reports' ? ['Draft', 'Issued'] : [])), f.status, (v) => { f.status = v; renderMain(); }) : null,
+      isStaff() && t !== 'Users' ? h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: f.mine, onchange: (e) => { f.mine = e.target.checked; S.params.mine = false; renderMain(); } }), 'Mine only') : null,
+      h('div', { class: 'sp' }), h('span', { class: 'muted small' }, rows.length + ' record' + (rows.length === 1 ? '' : 's'))));
+
+    if (!rows.length) { c.appendChild(h('section', { class: 'card' }, empty(D(t).length ? 'No records match the filters.' : 'Nothing recorded yet.' + (canCreate(t) ? ' Use “' + newLabel(t) + '” to add the first one.' : '')))); return; }
+    const head = h('tr', null, h('th', null, 'Ref'), cols.map((col) => h('th', { class: col.num ? 'num' : null, 'aria-sort': f.sort === col.k ? (f.dir > 0 ? 'ascending' : 'descending') : null },
+      h('button', { onclick: () => { if (f.sort === col.k) f.dir = -f.dir; else { f.sort = col.k; f.dir = 1; } renderMain(); } }, col.label, f.sort === col.k ? (f.dir > 0 ? ' ↑' : ' ↓') : ''))));
+    const tb = h('tbody');
+    const LIMIT = 400;
+    rows.slice(0, LIMIT).forEach((r) => {
+      tb.appendChild(h('tr', { class: 'click', tabindex: '0', onclick: () => (t === 'Projects' ? go('project', { id: r.id }) : t === 'Assessments' ? go('assessment', { id: r.id }) : openRecord(t, r)), onkeydown: (e) => { if (e.key === 'Enter') e.currentTarget.click(); } },
+        h('td', { class: 'mono', style: { whiteSpace: 'nowrap' } }, t === 'Projects' ? r.code : r.id),
+        cols.map((col) => h('td', { class: col.num ? 'num' : null }, col.show ? col.show(col.val(r), r) : col.k === 'code' && t === 'Projects' ? h('span', { class: 'muted' }, r.id) : cellFor(t, col.f, r)))));
+    });
+    c.appendChild(h('div', { class: 'tbl-wrap' }, h('table', { class: 'tbl' }, h('thead', null, head), tb)));
+    if (rows.length > LIMIT) c.appendChild(h('p', { class: 'small muted' }, 'Showing the first ' + LIMIT + ' of ' + rows.length + '. Narrow the search or export CSV for the full list.'));
+  }
+  function newLabel(t) { return { Users: 'Add user', Projects: 'Add project', Findings: 'Raise finding', NCRs: 'Add NCR / OBS', Escalations: 'New escalation', Milestones: 'Add milestone', Risks: 'Add risk', Tasks: 'New task', Weekly: 'Weekly update', Assessments: 'Start an assessment', Reports: 'New report' }[t] || 'New'; }
+
+  function ncrInsights(c, rows) {
+    const asOf = B().asOf, cfg = B().config;
+    const open = rows.filter((r) => r.status === 'Open');
+    const bands = { notPast: 0, b1: 0, b2: 0, b3: 0, over: 0, noDate: 0 };
+    open.forEach((r) => { const l = r.expectedDate ? days(r.expectedDate, asOf) : null; if (l === null) bands.noDate++; else if (l <= 0) bands.notPast++; else if (l <= cfg.ncrBand1) bands.b1++; else if (l <= cfg.ncrBand2) bands.b2++; else if (l <= cfg.ncrBand3) bands.b3++; else bands.over++; });
+    const cat = {}, own2 = {};
+    rows.filter((r) => r.status !== 'Cancelled').forEach((r) => { cat[r.category || 'Not classified'] = (cat[r.category || 'Not classified'] || 0) + 1; });
+    open.forEach((r) => { own2[r.contractor || 'Not stated'] = (own2[r.contractor || 'Not stated'] || 0) + 1; });
+    const toRows = (o, col) => Object.keys(o).map((k) => ({ label: k, value: o[k], color: col })).sort((a, b) => b.value - a.value).slice(0, 8);
+    c.appendChild(h('div', { class: 'grid g3' },
+      card('Ageing past expected completion', open.length + ' open in this view', ageingBar({ bands: bands, bandEdges: [cfg.ncrBand1, cfg.ncrBand2, cfg.ncrBand3] }), { right: proptag() }),
+      card('By category / root cause', 'Pareto, all issued in this view', hbars(toRows(cat, css('--s1')), { aria: 'NCR by category' })),
+      card('Open by owner (contractor)', 'Recurrence by contractor', hbars(toRows(own2, css('--s3')), { aria: 'Open NCR by contractor' }))));
+  }
+
+  function exportCsv(t, rows) {
+    const sc = schema(t);
+    const cols = ['id'].concat(sc.fields.filter((f) => f.type !== 'json').map((f) => f.k), ['updatedAt', 'updatedBy']);
+    const labels = ['Ref'].concat(sc.fields.filter((f) => f.type !== 'json').map((f) => f.label), ['Updated', 'Updated by']);
+    const esc = (v) => { let x = v === null || v === undefined ? '' : String(v); if (/^[=+\-@]/.test(x)) x = "'" + x; return /[",\n]/.test(x) ? '"' + x.replace(/"/g, '""') + '"' : x; };
+    const lines = [labels.map(esc).join(',')].concat(rows.map((r) => cols.map((k) => { const f = fieldOf(t, k); return esc(f && f.type === 'project' ? projLabel(r[k]) : r[k]); }).join(',')));
+    const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+    if (saveFile(blob, 'Q-TRACK_' + t + '_' + B().asOf + '.csv')) toast('Exported ' + rows.length + ' rows', 'ok');
+  }
+
+  /* ---------------- Record drawer ---------------- */
+  let drawerReturn = null;
+  function openRecord(t, rec, defaults) {
+    if (t === 'Assessments') return go('assessment', { id: rec ? rec.id : null, projectId: defaults && defaults.projectId });
+    const sc = schema(t);
+    const isNew = !rec;
+    const editable = isNew ? canCreate(t) : canEdit(t, rec);
+    const draft = isNew ? {} : JSON.parse(JSON.stringify(rec));
+    if (isNew) sc.fields.forEach((f) => {
+      if (f.sys) return;
+      const d = f.def === '$today' ? B().asOf : f.def === '$me' ? me().email : f.def === '$friday' ? friday(B().asOf) : f.def;
+      draft[f.k] = d === undefined ? '' : d;
+    });
+    if (isNew && defaults && defaults.projectId) draft.projectId = defaults.projectId;
+    if (isNew && t === 'Tasks' && !isHQ()) draft.assignee = me().email;
+    drawerReturn = document.activeElement;
+    const form = h('div', { class: 'form' });
+    const errs = h('div', { class: 'banner warn', hidden: true, role: 'alert' });
+    sc.fields.forEach((f) => {
+      if (f.sys || f.type === 'json') return;
+      if (f.hqOnly && !isHQ()) return;
+      const id = 'd-' + f.k;
+      const wide = f.type === 'longtext' || f.k === 'title' || f.k === 'name' || f.k === 'ask' || f.k === 'item' || (f.type === 'project');
+      const lockedField = !editable || (t === 'Tasks' && !isHQ() && (f.k === 'assignee' && !isNew || f.k === 'due' && !isNew)) || (t === 'Projects' && !isHQ() && role() !== 'CLERK' && ['lead', 'deputy', 'tier', 'tierStatus', 'code'].indexOf(f.k) >= 0) || (t === 'Users' && f.k === 'role' && !isHQ() && draft.role === 'HQ');
+      let ctl;
+      if (lockedField) {
+        const v = draft[f.k];
+        const shown = f.type === 'project' ? (projById(v) ? projById(v).code + ' — ' + projById(v).name : '—') : f.type === 'user' ? userName(v) : f.type === 'date' ? F.date(v) : f.type === 'bool' ? (v ? 'Yes' : 'No') : f.labels && f.labels[v] ? f.labels[v] : v;
+        ctl = h('div', { class: 'ro' + (shown === '' || shown === '—' || shown === undefined ? ' empty' : ''), id: id }, shown === '' || shown === undefined ? '—' : String(shown));
+      } else if (f.type === 'longtext') {
+        ctl = h('textarea', { class: 'input', id: id, rows: 3, oninput: (e) => { draft[f.k] = e.target.value; } }); ctl.value = draft[f.k] || '';
+      } else if (f.type === 'enum' || f.type === 'project' || f.type === 'user') {
+        let opts = optionsFor(t, f, rec);
+        if (t === 'Users' && f.k === 'role' && !isHQ()) opts = opts.filter((o) => o.v !== 'HQ');
+        if (t === 'Tasks' && f.k === 'status' && !isHQ()) opts = opts.filter((o) => o.v !== 'Accepted' || draft.status === 'Accepted');
+        ctl = h('select', { class: 'input', id: id, onchange: (e) => { draft[f.k] = e.target.value; } }, (f.req && draft[f.k] ? [] : [h('option', { value: '' }, f.req ? 'Choose…' : '—')]).concat(opts.filter((o) => o.v !== '').map((o) => h('option', { value: o.v, selected: String(o.v) === String(draft[f.k]) ? true : null }, o.l))));
+      } else if (f.type === 'bool') {
+        ctl = h('label', { class: 'check', style: { minHeight: '38px' } }, h('input', { type: 'checkbox', id: id, checked: !!draft[f.k], onchange: (e) => { draft[f.k] = e.target.checked; } }), 'Yes');
+      } else {
+        ctl = h('input', { class: 'input', id: id, type: f.type === 'date' ? 'date' : f.type === 'month' ? 'month' : f.type === 'number' ? 'number' : f.k === 'email' ? 'email' : 'text', value: draft[f.k] === null || draft[f.k] === undefined ? '' : draft[f.k], oninput: (e) => { draft[f.k] = e.target.value; } });
+      }
+      form.appendChild(h('div', { class: 'field' + (wide ? ' full' : '') }, h('label', { for: id }, f.label, f.req && !lockedField ? h('span', { class: 'req', 'aria-hidden': 'true' }, ' *') : null), ctl, f.hint && !lockedField ? h('span', { class: 'hint' }, f.hint) : null));
+    });
+
+    const titleTxt = isNew ? newLabel(t) : (t === 'Projects' ? rec.code : rec.id) + (rec.title ? ' — ' + rec.title : rec.item ? ' — ' + rec.item : rec.name ? ' — ' + rec.name : '');
+    const saveBtn = editable ? h('button', { class: 'btn primary', onclick: save }, isNew ? 'Create' : 'Save changes') : null;
+    const delBtn = !isNew && (isHQ() || (t === 'Weekly' && isMe(rec.createdBy))) ? h('button', { class: 'btn ghost danger', onclick: del }, 'Delete') : null;
+    const extra = [];
+    if (!isNew && t === 'Tasks' && isHQ() && rec.status === 'Submitted') {
+      extra.push(h('button', { class: 'btn good', onclick: () => { draft.status = 'Accepted'; save(); } }, 'Accept'), h('button', { class: 'btn', onclick: () => { draft.status = 'Returned'; save(); } }, 'Return'));
+    }
+    if (!isNew && t === 'Projects') extra.push(h('button', { class: 'btn', onclick: () => { closeDrawer(); go('project', { id: rec.id }); } }, 'Open project page'));
+
+    const body = h('div', { class: 'db' }, errs,
+      sc.level2 ? h('div', { class: 'banner info' }, icon('info'), 'Level 2 record owned by the project / contractor. HQ QA holds the reference.') : null,
+      !editable && !isNew ? h('div', { class: 'banner info' }, icon('info'), isStaff() ? 'You can view this record. Changes are made by its owner or Head – QA.' : 'Read-only view.') : null,
+      t === 'Escalations' && draft.stopWork && !isNew ? swoBlock(draft) : null,
+      form,
+      !isNew ? h('div', { class: 'meta-row' }, h('span', null, 'Created ' + F.stamp(rec.createdAt) + ' by ' + userName(rec.createdBy)), h('span', null, 'Updated ' + F.stamp(rec.updatedAt) + ' by ' + userName(rec.updatedBy)), h('span', null, 'Rev ' + rec.rev)) : null);
+    const dr = h('div', { class: 'drawer', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'dr-title' },
+      h('div', { class: 'dh' }, h('div', { class: 'tt' }, h('span', { class: 'xs muted' }, sc.title), h('h2', { id: 'dr-title' }, titleTxt)), h('button', { class: 'btn ghost icon', 'aria-label': 'Close', onclick: closeDrawer }, icon('x'))),
+      body,
+      h('div', { class: 'df' }, delBtn, h('div', { class: 'sp' }), extra, h('button', { class: 'btn', onclick: closeDrawer }, editable ? 'Cancel' : 'Close'), saveBtn));
+    const bg = h('div', { class: 'drawer-bg', onclick: closeDrawer });
+    closeDrawer(true);
+    document.body.append(bg, dr);
+    requestAnimationFrame(() => { bg.classList.add('on'); dr.classList.add('on'); const first = dr.querySelector('.db input, .db select, .db textarea'); (first || dr.querySelector('.dh button')).focus(); });
+    dr.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDrawer(); trapTab(e, dr); });
+
+    function save() {
+      errs.hidden = true;
+      const missing = sc.fields.filter((f) => f.req && !f.sys && (draft[f.k] === '' || draft[f.k] === null || draft[f.k] === undefined) && !(f.hqOnly && !isHQ()));
+      if (missing.length) { errs.hidden = false; errs.replaceChildren(icon('alert'), 'Required: ' + missing.map((f) => f.label).join(', ') + '.'); return; }
+      saveBtn && (saveBtn.disabled = true);
+      call('save', { table: t, record: draft }).then((r) => { patch(t, r); closeDrawer(); toast((isNew ? 'Created ' : 'Saved ') + (t === 'Projects' ? r.code : r.id), 'ok'); renderMain(); refresh(); })
+        .catch((e) => { errs.hidden = false; errs.replaceChildren(icon('alert'), e.message || 'Could not save.'); if (saveBtn) saveBtn.disabled = false; });
+    }
+    function del() {
+      confirmBox('Delete ' + rec.id + '?', 'The row is removed from the Sheet. The audit log keeps a copy. Prefer setting the status to Closed or Cancelled.', 'Delete').then((y) => {
+        if (!y) return;
+        call('remove', { table: t, id: rec.id }).then(() => { unpatch(t, rec.id); closeDrawer(); toast('Deleted ' + rec.id, 'ok'); renderMain(); refresh(); }).catch(fail);
+      });
+    }
+  }
+  function swoBlock(e) {
+    const dd = days(e.raisedDate, B().asOf);
+    const conds = String(e.conditions || '').split(/\n+/).filter(Boolean);
+    return h('div', { class: 'card flat', style: { borderColor: 'var(--bad-solid)' } }, h('div', { class: 'cb' },
+      h('div', { style: { display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' } }, h('span', { class: 'chip plain sev-Critical' }, 'Stop-work / hold in force'), dd !== null ? h('b', null, 'Day ' + dd) : null, h('span', { class: 'small muted' }, 'since ' + F.date(e.raisedDate))),
+      conds.length ? h('ol', { style: { margin: '10px 0 0', paddingLeft: '18px' } }, conds.map((x) => h('li', null, x))) : h('p', { class: 'small muted', style: { marginTop: '8px' } }, 'No lift conditions recorded.')));
+  }
+  function closeDrawer(silent) {
+    document.querySelectorAll('.drawer, .drawer-bg').forEach((el) => { el.classList.remove('on'); setTimeout(() => el.remove(), silent === true ? 0 : 220); });
+    if (silent !== true && drawerReturn && document.body.contains(drawerReturn)) drawerReturn.focus();
+  }
+  function trapTab(e, root) {
+    if (e.key !== 'Tab') return;
+    const f = Array.prototype.filter.call(root.querySelectorAll('button, input, select, textarea, [tabindex]:not([tabindex="-1"])'), (x) => !x.disabled && x.offsetParent !== null);
+    if (!f.length) return;
+    if (e.shiftKey && document.activeElement === f[0]) { e.preventDefault(); f[f.length - 1].focus(); }
+    else if (!e.shiftKey && document.activeElement === f[f.length - 1]) { e.preventDefault(); f[0].focus(); }
+  }
+  function friday(iso) { const d = new Date(dayNum(iso) * 864e5); return new Date((dayNum(iso) + ((5 - d.getUTCDay() + 7) % 7)) * 864e5).toISOString().slice(0, 10); }
+
+  function modal(title, msg, okLabel, withInput) {
+    return new Promise((resolve) => {
+      const prev = document.activeElement;
+      const inp = withInput ? h('textarea', { class: 'input', rows: 3, 'aria-label': title }) : null;
+      const bg = h('div', { class: 'drawer-bg modal-bg' });
+      const done = (v) => { bg.remove(); m.remove(); if (prev) prev.focus(); resolve(v); };
+      const ok = h('button', { class: 'btn ' + (/delete|return/i.test(okLabel) ? 'danger' : 'primary'), onclick: () => done(withInput ? inp.value.trim() : true) }, okLabel);
+      const m = h('div', { class: 'modal', role: 'alertdialog', 'aria-modal': 'true', 'aria-labelledby': 'm-t' }, h('h2', { id: 'm-t' }, title), h('p', { class: 'muted' }, msg), inp, h('div', { class: 'acts' }, h('button', { class: 'btn', onclick: () => done(withInput ? '' : false) }, 'Cancel'), ok));
+      m.addEventListener('keydown', (e) => { if (e.key === 'Escape') done(withInput ? '' : false); trapTab(e, m); });
+      document.body.append(bg, m);
+      requestAnimationFrame(() => { bg.classList.add('on'); m.classList.add('on'); (inp || ok).focus(); });
+    });
+  }
+  const confirmBox = (t, m, ok) => modal(t, m, ok, false);
+  const promptBox = (t, m, ok) => modal(t, m, ok, true);
+
+  /* ---------------- Monthly report ---------------- */
+  VIEWS.report = function (c) {
+    setCrumb('Monthly management report', 'Work & reporting');
+    const cur = B().asOf.slice(0, 7);
+    const per = S.params.period || shiftPeriod(cur, -1);
+    const rep = D('Reports').find((r) => r.period === per);
+    const months = [];
+    for (let i = 0; i < 13; i++) months.push(shiftPeriod(cur, -i));
+    D('Reports').forEach((r) => { if (months.indexOf(r.period) < 0) months.push(r.period); });
+    months.sort().reverse();
+    const issued = rep && rep.state === 'Issued';
+    const snap = issued ? rep.snapshot : null;
+    const live = B().dashboard;
+    const projName = (id) => { if (snap) { const p = snap.projects.find((x) => x.id === id); return p ? p.code : id; } return projLabel(id); };
+
+    c.appendChild(h('div', { class: 'toolbar no-print' },
+      selectBox('Month', months.map((m) => ({ v: m, l: F.month(m) + (D('Reports').find((r) => r.period === m) ? ' · ' + D('Reports').find((r) => r.period === m).state : '') })), per, (v) => { S.params.period = v; renderMain(); }),
+      h('div', { class: 'sp' }),
+      h('button', { class: 'btn', onclick: printPage }, icon('print'), 'Print / save as PDF'),
+      rep && isHQ() && !issued ? h('button', { class: 'btn primary', onclick: () => confirmBox('Issue the ' + F.month(per) + ' report?', 'Issuing freezes the report and a snapshot of the dashboard as at the end of the month. It can no longer be edited.', 'Issue').then((y) => { if (y) call('reportIssue', { id: rep.id, rev: rep.rev }).then((r) => { patch('Reports', r); toast('Report issued', 'ok'); renderMain(); }).catch(fail); }) }, 'Issue report') : null));
+
+    c.appendChild(h('div', { class: 'print-only' }, h('div', { style: { display: 'flex', justifyContent: 'space-between', borderBottom: '3px solid #0B2A6F', paddingBottom: '6px', marginBottom: '10px' } }, h('b', { style: { fontSize: '18px' } }, B().config.orgName), h('span', null, 'Monthly Management Assurance Report — ' + F.month(per)))));
+    c.appendChild(pageHead('Monthly management assurance report — ' + F.month(per), 'RMM §21: overall conclusion, portfolio dashboard, top five quality risks, significant findings and escalations, NCR / CAPA trends and decisions required. It distinguishes facts, HQ QA assessment, limitations and decisions.', null,
+      h('div', { class: 'meta-row' }, rep ? chip(rep.state) : h('span', { class: 'chip plain' }, 'Not started'), issued ? h('span', null, 'Issued ' + F.stamp(rep.issuedAt) + ' by ' + userName(rep.issuedBy) + ' · dashboard frozen as at ' + F.date(snap.asOf)) : h('span', null, 'Sections 2–5 show live records until the report is issued.'))));
+
+    if (!rep) {
+      c.appendChild(card('No report for ' + F.month(per) + ' yet', null, isHQ()
+        ? h('div', { style: { display: 'flex', flexDirection: 'column', gap: '12px', alignItems: 'flex-start' } }, h('p', null, 'Start the report to write the overall conclusion and decisions. Sections 2–5 are compiled from the records automatically.'), h('button', { class: 'btn primary', onclick: () => call('save', { table: 'Reports', record: { period: per, overall: live.overall === 'Not assessed' ? '' : live.overall, confidence: 'Moderate' } }).then((r) => { patch('Reports', r); renderMain(); }).catch(fail) }, icon('plus'), 'Start the ' + F.month(per) + ' report'))
+        : h('p', { class: 'muted' }, 'Head – QA has not started this month’s report.')));
+      if (!isHQ()) return;
+    }
+
+    const sec = (n, title, body, right) => h('section', { class: 'card report-sec' }, h('div', { class: 'ch' }, h('div', { class: 'tt' }, h('h2', null, n + '. ' + title)), right || null), h('div', { class: 'cb' }, body));
+
+    // 1 Overall conclusion
+    if (rep) {
+      const editable = isHQ() && !issued;
+      const d = JSON.parse(JSON.stringify(rep));
+      const fld = (k, rows) => {
+        const f = fieldOf('Reports', k);
+        if (!editable) return h('div', { class: 'field full' }, h('label', null, f.label), h('div', { class: 'ro' + (d[k] ? '' : ' empty') }, d[k] || '—'));
+        const t = h('textarea', { class: 'input', rows: rows || 3, id: 'r-' + k, oninput: (e) => { d[k] = e.target.value; } }); t.value = d[k] || '';
+        return h('div', { class: 'field full' }, h('label', { for: 'r-' + k }, f.label), t);
+      };
+      const sel = (k, opts) => editable ? h('select', { class: 'input', id: 'r-' + k, onchange: (e) => { d[k] = e.target.value; } }, h('option', { value: '' }, '—'), opts.map((o) => h('option', { value: o, selected: d[k] === o ? true : null }, o))) : chip(d[k]);
+      c.appendChild(sec(1, 'Overall assurance conclusion', h('div', { class: 'form' },
+        h('div', { class: 'field' }, h('label', { for: 'r-overall' }, 'Overall portfolio status'), sel('overall', ['Green', 'Amber', 'Red', 'Grey'])),
+        h('div', { class: 'field' }, h('label', { for: 'r-confidence' }, 'Confidence'), sel('confidence', ['High', 'Moderate', 'Limited'])),
+        fld('conclusion', 3), fld('reasons', 3), fld('limitations', 2),
+        editable ? h('div', { class: 'field full no-print' }, h('div', null, h('button', { class: 'btn primary', onclick: (e) => { e.target.disabled = true; call('save', { table: 'Reports', record: d }).then((r) => { patch('Reports', r); toast('Report saved', 'ok'); renderMain(); }).catch((er) => { e.target.disabled = false; fail(er); }); } }, 'Save sections 1 and 6'), h('span', { class: 'small muted', style: { marginLeft: '10px' } }, 'Live dashboard suggests ' + live.overall + '.'))) : null),
+        rep.overall ? chip(rep.overall, 'lg') : null));
+      S.params.repDraft = d;
+    }
+
+    // 2 Portfolio dashboard
+    const heat = snap ? snap.heat : live.heat;
+    const counts = snap ? snap.counts : live.counts;
+    c.appendChild(sec(2, 'Portfolio dashboard', h('div', { style: { display: 'flex', flexDirection: 'column', gap: '12px' } },
+      h('div', { class: 'counts' }, Object.keys(counts).map((k) => h('span', null, h('b', null, String(counts[k])), k))),
+      heatTable(heat), heatLegend()), h('span', { class: 'small muted' }, snap ? 'Frozen ' + F.date(snap.asOf) : 'Live')));
+
+    // 3 Top five risks
+    const order = { Critical: 0, High: 1, Medium: 2, Low: 3 };
+    const risks = (snap ? snap.risks : D('Risks').filter((r) => r.status === 'Open')).slice().sort((a, b) => order[a.rating] - order[b.rating]).slice(0, 5);
+    c.appendChild(sec(3, 'Top five quality risks', risks.length ? h('div', { class: 'tbl-wrap inner-tbl' }, h('table', { class: 'tbl compact' }, h('thead', null, h('tr', null, ['Project', 'Risk', 'Rating', 'Trend', 'Control adequacy', 'Response / decision required'].map((x) => h('th', null, x)))),
+      h('tbody', null, risks.map((r) => h('tr', null, h('td', null, h('b', null, projName(r.projectId))), h('td', null, r.title), h('td', null, sevChip(r.rating)), h('td', null, chip(r.trend)), h('td', null, chip(r.control)), h('td', null, r.response || '—')))))) : empty('No open quality risks recorded.')));
+
+    // 4 Findings and escalations
+    const finds = snap ? snap.findings : D('Findings').filter((f) => ['Closed', 'Verified effective'].indexOf(f.status) < 0 && (f.severity === 'Critical' || f.severity === 'Major'));
+    const escs = snap ? snap.escalations : D('Escalations').filter((e) => e.status === 'Open');
+    c.appendChild(sec(4, 'Significant assurance findings, overdue actions and escalations', h('div', { class: 'grid g2' },
+      h('div', null, h('h3', { style: { marginBottom: '8px' } }, 'Critical and Major findings open (' + finds.length + ')'), finds.length ? h('div', { class: 'list' }, finds.map((f) => h('div', { class: 'li' }, sevChip(f.severity), h('div', { class: 'body' }, h('b', null, f.id + ' — ' + f.title), h('span', { class: 'small muted' }, projName(f.projectId) + ' · ' + f.status + ' · responsible party ' + f.responsibleParty + (f.responseDue ? ' · response due ' + F.date(f.responseDue) : '')))))) : h('p', { class: 'muted' }, 'None.')),
+      h('div', null, h('h3', { style: { marginBottom: '8px' } }, 'Open escalations (' + escs.length + ')'), escs.length ? h('div', { class: 'list' }, escs.map((e) => h('div', { class: 'li' }, lvl(e.level), h('div', { class: 'body' }, h('b', null, e.ask), h('span', { class: 'small muted' }, projName(e.projectId) + ' · ' + e.owner + ' · due ' + F.date(e.dueDate) + (e.stopWork ? ' · stop-work / hold in force' : '')))))) : h('p', { class: 'muted' }, 'None.')))));
+
+    // 5 NCR / CAPA trends
+    const progs = (snap ? snap.programmes : live.programmes).filter((p) => p.programme !== 'Portfolio');
+    c.appendChild(sec(5, 'NCR / CAPA trends', h('div', { style: { display: 'flex', flexDirection: 'column', gap: '14px' } },
+      h('div', { class: 'tbl-wrap inner-tbl' }, h('table', { class: 'tbl compact' }, h('thead', null, h('tr', null, ['Programme', 'Issued', 'Open', 'Past expected', '> top band', 'Median age', 'CAPA verified effective'].map((x, i) => h('th', { class: i && i < 6 ? 'num' : null }, x)))),
+        h('tbody', null, progs.map((p) => h('tr', null, h('td', null, h('b', null, p.programme)), h('td', { class: 'num' }, F.int(p.ncr.issued)), h('td', { class: 'num' }, F.int(p.ncr.open)), h('td', { class: 'num' }, F.pct(p.ncr.pastPct)), h('td', { class: 'num' }, F.int(p.ncr.over90)), h('td', { class: 'num' }, p.ncr.medianAge === null ? '—' : Math.round(p.ncr.medianAge) + ' d'), h('td', null, capaBar(p.ncr.capa))))))),
+      h('div', null, h('h3', { style: { marginBottom: '8px' } }, 'NCR / OBS raised per month (c-chart)'), cchart(snap ? snap.monthly : live.monthly))), h('span', null, l2tag())));
+
+    // 6 Decisions
+    const lines = String((rep && rep.decisions) || '').split(/\n+/).filter(Boolean);
+    const bc = escs.filter((e) => e.level === 'B' || e.level === 'C');
+    let decBody;
+    if (rep && isHQ() && !issued) {
+      const t = h('textarea', { class: 'input', rows: 4, id: 'r-decisions', oninput: (e) => { S.params.repDraft.decisions = e.target.value; } }); t.value = rep.decisions || '';
+      decBody = h('div', { class: 'form' }, h('div', { class: 'field full' }, h('label', { for: 'r-decisions' }, 'Decisions required — one per line: decision | accountable executive | required date'), t), h('div', { class: 'field full small muted' }, 'Save with the button in section 1.'));
+    } else decBody = lines.length ? h('ol', { style: { margin: 0, paddingLeft: '20px' } }, lines.map((l) => h('li', { style: { marginBottom: '6px' } }, l))) : h('p', { class: 'muted' }, 'No decisions recorded.');
+    c.appendChild(sec(6, 'Management decisions required', h('div', { style: { display: 'flex', flexDirection: 'column', gap: '12px' } }, decBody,
+      bc.length ? h('div', null, h('h3', { style: { margin: '6px 0 8px' } }, 'Open Level B / C escalations'), h('div', { class: 'list' }, bc.map((e) => h('div', { class: 'li' }, lvl(e.level), h('div', { class: 'body' }, h('b', null, e.ask), h('span', { class: 'small muted' }, e.owner + ' · due ' + F.date(e.dueDate))))))) : null)));
+
+    c.appendChild(h('section', { class: 'card' }, h('div', { class: 'cb' }, h('table', { class: 'tbl compact' }, h('thead', null, h('tr', null, ['', 'Name', 'Designation', 'Signature', 'Date'].map((x) => h('th', null, x)))),
+      h('tbody', null, [['Prepared by', rep && rep.issuedBy ? userName(rep.issuedBy) : me().role === 'HQ' ? me().name : '', 'Head of QA'], ['Reviewed by', '', 'Head of Department, Standard & Compliance'], ['Approved by', '', 'Division Head']].map((r) => h('tr', null, h('td', null, h('b', null, r[0])), h('td', null, r[1]), h('td', null, r[2]), h('td', { style: { height: '40px' } }, ''), h('td', null, '')))))))) ;
+  };
+
+  /* ---------------- Administration ---------------- */
+  VIEWS.admin = function (c) {
+    setCrumb('Administration', 'System');
+    const tab = S.params.tab || 'users';
+    c.appendChild(pageHead('Administration', 'People and roles, settings, bulk import and setup.', null));
+    const tabs = [['users', 'Users & roles'], ['import', 'Import data']].concat(isHQ() ? [['settings', 'Settings'], ['about', 'Setup & data']] : []);
+    c.appendChild(h('div', { class: 'tabs', role: 'tablist' }, tabs.map((t) => h('button', { role: 'tab', 'aria-selected': String(tab === t[0]), onclick: () => { S.params.tab = t[0]; renderMain(); } }, t[1]))));
+    if (tab === 'users') {
+      c.appendChild(h('div', { class: 'banner info' }, icon('info'), 'Add each person with the Google account they sign in with. Head – QA sees everything and approves; Assistant Managers update projects allocated to them; the admin clerk keeps registers and users; Management is read-only.'));
+      c.appendChild(h('div', { class: 'toolbar' }, h('div', { class: 'sp' }), canCreate('Users') ? h('button', { class: 'btn primary', onclick: () => openRecord('Users', null) }, icon('plus'), 'Add user') : null));
+      const tb = h('tbody');
+      D('Users').slice().sort((a, b) => String(a.role).localeCompare(String(b.role)) || String(a.name).localeCompare(String(b.name))).forEach((u) => tb.appendChild(h('tr', { class: 'click', tabindex: '0', onclick: () => openRecord('Users', u), onkeydown: (e) => { if (e.key === 'Enter') openRecord('Users', u); } },
+        h('td', null, h('div', { style: { display: 'flex', gap: '10px', alignItems: 'center' } }, h('span', { class: 'avatar', 'aria-hidden': 'true' }, initials(u.name)), h('div', null, h('b', null, u.name), h('div', { class: 'small muted' }, u.email)))),
+        h('td', null, u.code || '—'), h('td', null, h('span', { class: 'chip plain' }, B().roles[u.role] || u.role)), h('td', null, u.title || '—'),
+        h('td', { class: 'num' }, String(D('Projects').filter((p) => isSame(p.lead, u.email) || isSame(p.deputy, u.email)).length)),
+        h('td', null, u.active === false ? chip('Inactive') : chip('Active', 'st-Green')))));
+      c.appendChild(h('div', { class: 'tbl-wrap' }, h('table', { class: 'tbl' }, h('thead', null, h('tr', null, ['Person', 'Code', 'Role', 'Designation', 'Projects', 'Access'].map((x, i) => h('th', { class: i === 4 ? 'num' : null }, x)))), tb)));
+    }
+    if (tab === 'settings') {
+      const cfg = Object.assign({}, B().config);
+      const form = h('div', { class: 'form' }, B().configFields.map((f) => {
+        const id = 'cfg-' + f.k;
+        const ctl = f.type === 'bool' ? h('label', { class: 'check' }, h('input', { type: 'checkbox', id: id, checked: !!cfg[f.k], onchange: (e) => { cfg[f.k] = e.target.checked; } }), 'Yes')
+          : h('input', { class: 'input', id: id, type: f.type === 'number' ? 'number' : 'text', value: cfg[f.k], oninput: (e) => { cfg[f.k] = f.type === 'number' ? Number(e.target.value) : e.target.value; } });
+        return h('div', { class: 'field' + (f.type === 'text' ? ' full' : '') }, h('label', { for: id }, f.label), ctl);
+      }));
+      c.appendChild(card('Thresholds and options', 'All thresholds are Proposed until you tick “approved”. Changes apply to everyone at their next load.', h('div', { style: { display: 'flex', flexDirection: 'column', gap: '16px' } }, form,
+        h('div', null, h('button', { class: 'btn primary', onclick: (e) => { e.target.disabled = true; call('configSave', { config: cfg }).then((r) => { S.boot.config = r; toast('Settings saved', 'ok'); refresh(); }).catch(fail).finally(() => { e.target.disabled = false; }); } }, 'Save settings'))),
+        { foot: 'The daily e-mail needs a time trigger: in the Sheet choose Q-TRACK → Turn on the daily alert e-mail.' }));
+    }
+    if (tab === 'import') importPanel(c);
+    if (tab === 'about') {
+      c.appendChild(card('Where the data lives', null, h('div', { style: { display: 'flex', flexDirection: 'column', gap: '10px' } },
+        h('p', null, 'Every register is a tab in one Google Sheet owned by Head – QA. People use Q-TRACK; they do not need access to the Sheet. Each change is stamped with who made it and when, and copied to the Audit tab.'),
+        B().sheetUrl ? h('p', null, h('a', { href: B().sheetUrl, target: '_blank', rel: 'noopener' }, 'Open the backing Google Sheet ', icon('ext'))) : null,
+        h('p', { class: 'small muted' }, 'Sample data: projects coded DEMO-… and people at @sample.example. Remove them from the Sheet menu: Q-TRACK → Remove sample data.'),
+        h('p', { class: 'small muted' }, 'Version ' + B().app.version + ' · ' + B().app.edition + ' · time zone ' + B().tz))));
+    }
+  };
+  const isSame = (a, b) => String(a || '').toLowerCase() === String(b || '').toLowerCase();
+
+  function importPanel(c) {
+    const st = S.params.imp || (S.params.imp = { table: 'NCRs', rows: null, result: null, name: '' });
+    const tables = ['NCRs', 'Projects', 'Milestones', 'Findings', 'Risks', 'Users'];
+    const sc = schema(st.table);
+    const tmpl = sc.fields.filter((f) => !f.sys && f.type !== 'json').map((f) => f.k);
+    const fileIn = h('input', { type: 'file', accept: '.csv,text/csv', class: 'input', id: 'imp-file', onchange: (e) => { const file = e.target.files[0]; if (!file) return; file.text().then((txt) => { st.rows = parseCsv(txt); st.name = file.name; st.result = null; renderMain(); }); } });
+    const paste = h('textarea', { class: 'input', rows: 5, id: 'imp-paste', placeholder: 'Or paste CSV here (first row = column names)' });
+    c.appendChild(card('Bulk import', 'Load a register from CSV. Q-TRACK checks every row first; nothing is written unless every row passes.', h('div', { class: 'form' },
+      h('div', { class: 'field' }, h('label', { for: 'imp-t' }, 'Register'), h('select', { class: 'input', id: 'imp-t', onchange: (e) => { st.table = e.target.value; st.rows = null; st.result = null; renderMain(); } }, tables.map((t) => h('option', { value: t, selected: t === st.table ? true : null }, schema(t).title)))),
+      h('div', { class: 'field' }, h('label', { for: 'imp-file' }, 'CSV file'), fileIn),
+      h('div', { class: 'field full' }, paste, h('div', null, h('button', { class: 'btn sm', onclick: () => { st.rows = parseCsv(paste.value); st.name = 'pasted text'; st.result = null; renderMain(); } }, 'Use pasted text'))),
+      h('div', { class: 'field full' }, h('span', { class: 'hint' }, 'Columns (key or label): ' + tmpl.join(', ') + '. Projects may be given by project code. Dates as yyyy-mm-dd.'), h('div', null, h('button', { class: 'btn sm ghost', onclick: () => saveFile(new Blob([tmpl.join(',') + '\r\n'], { type: 'text/csv' }), 'Q-TRACK_' + st.table + '_template.csv') }, icon('download'), 'Download template'))))));
+    if (st.rows) {
+      const run = (commit) => call('importRows', { table: st.table, rows: st.rows, commit: commit }).then((r) => { st.result = r; if (r.committed) { toast('Imported ' + r.total + ' rows', 'ok'); st.rows = null; refresh(); } renderMain(); }).catch(fail);
+      const r = st.result;
+      c.appendChild(card(st.rows.length + ' rows read from ' + st.name, null, h('div', { style: { display: 'flex', flexDirection: 'column', gap: '12px' } },
+        !r ? h('div', null, h('button', { class: 'btn primary', onclick: () => run(false) }, 'Check rows')) : null,
+        r && r.errors.length ? h('div', null, h('div', { class: 'banner warn' }, icon('alert'), r.errors.length + ' of ' + r.total + ' rows need fixing. Nothing has been saved.'), h('div', { class: 'tbl-wrap inner-tbl', style: { marginTop: '10px' } }, h('table', { class: 'tbl compact' }, h('thead', null, h('tr', null, h('th', null, 'CSV row'), h('th', null, 'Problem'))), h('tbody', null, r.errors.slice(0, 50).map((e) => h('tr', null, h('td', { class: 'num' }, String(e.row)), h('td', null, e.message))))))) : null,
+        r && !r.errors.length && !r.committed ? h('div', { style: { display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' } }, h('div', { class: 'banner info' }, icon('check'), 'All ' + r.total + ' rows pass the checks.'), h('button', { class: 'btn good', onclick: () => run(true) }, 'Import ' + r.total + ' rows')) : null)));
+    } else if (st.result && st.result.committed) c.appendChild(h('div', { class: 'banner info' }, icon('check'), 'Import complete: ' + st.result.total + ' rows added.'));
+  }
+  function parseCsv(txt) {
+    const rows = []; let row = [], cell = '', q = false;
+    txt = String(txt || '').replace(/^﻿/, '');
+    for (let i = 0; i < txt.length; i++) {
+      const ch = txt[i];
+      if (q) { if (ch === '"' && txt[i + 1] === '"') { cell += '"'; i++; } else if (ch === '"') q = false; else cell += ch; }
+      else if (ch === '"') q = true;
+      else if (ch === ',') { row.push(cell); cell = ''; }
+      else if (ch === '\n' || ch === '\r') { if (ch === '\r' && txt[i + 1] === '\n') i++; row.push(cell); rows.push(row); row = []; cell = ''; }
+      else cell += ch;
+    }
+    if (cell !== '' || row.length) { row.push(cell); rows.push(row); }
+    const head = (rows.shift() || []).map((x) => x.trim());
+    return rows.filter((r) => r.some((x) => String(x).trim() !== '')).map((r) => { const o = {}; head.forEach((k, i) => { if (k) o[k] = (r[i] || '').trim(); }); return o; });
+  }
+
+  /* ---------------- Audit ---------------- */
+  VIEWS.audit = function (c) {
+    setCrumb('Audit log', 'System');
+    c.appendChild(pageHead('Audit log', 'Every change: who, when, what. The latest 500 entries; the full log is the Audit tab of the Sheet.', null));
+    const box = h('div', null, h('div', { class: 'skel', style: { height: '240px' } }));
+    c.appendChild(box);
+    call('auditList', { limit: 500 }).then((rows) => {
+      box.replaceChildren(rows.length ? h('div', { class: 'tbl-wrap' }, h('table', { class: 'tbl compact' }, h('thead', null, h('tr', null, ['When', 'Who', 'Action', 'Register', 'Ref', 'Change'].map((x) => h('th', null, x)))),
+        h('tbody', null, rows.map((r) => h('tr', null, h('td', { class: 'num', style: { whiteSpace: 'nowrap' } }, F.stamp(r.at)), h('td', null, userName(r.email)), h('td', null, h('span', { class: 'chip plain' }, r.action)), h('td', null, r.table), h('td', { class: 'mono' }, r.id), h('td', null, h('span', { class: 'clip small' }, r.summary))))))) : empty('No changes recorded yet.'));
+    }).catch((e) => box.replaceChildren(card('Could not load the audit log', null, h('p', null, e.message))));
+  };
+
+  /* =====================================================================
+     Data refresh
+     ===================================================================== */
+  function patch(t, rec) {
+    const list = S.boot.data[t];
+    const i = list.findIndex((r) => r.id === rec.id);
+    if (i >= 0) list[i] = rec; else list.push(rec);
+  }
+  function unpatch(t, id) { S.boot.data[t] = S.boot.data[t].filter((r) => r.id !== id); }
+  let refreshing = null;
+  function refresh(loud) {
+    if (refreshing) return refreshing;
+    refreshing = call('bootstrap').then((b) => {
+      const keepDraft = S.view === 'assessment' ? S.params.draft : null;
+      S.boot = b;
+      if (keepDraft && S.params.id) { const fresh = D('Assessments').find((a) => a.id === S.params.id); S.params.draft = fresh && fresh.rev !== keepDraft.rev ? JSON.parse(JSON.stringify(fresh)) : keepDraft; }
+      if (!document.querySelector('.drawer.on, .modal.on')) renderMain(); else drawNav();
+      if (loud) toast('Up to date', 'ok');
+    }).catch((e) => { if (loud) fail(e); }).finally(() => { refreshing = null; });
+    return refreshing;
+  }
+
+  /* =====================================================================
+     Boot
+     ===================================================================== */
+  function gate(title, msg, extra) {
+    $('#app').replaceChildren(h('div', { class: 'gate' }, h('div', { class: 'card' }, h('div', { style: { display: 'flex', gap: '12px', alignItems: 'center' } }, h('div', { class: 'mark' }, 'QT'), h('h1', null, title)), h('p', { class: 'muted' }, msg), extra || null)));
+  }
+  function boot() {
+    applyTheme();
+    call('bootstrap').then((b) => {
+      S.boot = b;
+      if (role() === 'VIEWER' && S.view === 'mywork') S.view = 'command';
+      renderShell();
+      renderMain();
+      window.addEventListener('resize', debounce(() => { if (!document.querySelector('.drawer.on')) renderMain(); }, 250));
+      setInterval(() => { if (document.visibilityState === 'visible') refresh(); }, 5 * 60 * 1000);
+    }).catch((e) => {
+      if (e.code === 'NOT_REGISTERED') gate('Access not set up yet', 'You are signed in as ' + e.message + ', but this account is not registered in Q-TRACK. Ask Head – QA or the admin clerk to add you under Administration → Users & roles, then reload.');
+      else if (e.code === 'NOT_SET_UP') gate('Q-TRACK is not set up', e.message);
+      else gate('Q-TRACK could not start', e.message || 'Unknown problem.', h('button', { class: 'btn primary', onclick: boot }, 'Try again'));
+    });
+  }
+  window.QTRACK = { boot: boot, state: S };
+  boot();
+})();
+</script>
