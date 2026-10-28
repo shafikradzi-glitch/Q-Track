@@ -38,7 +38,7 @@ function installDigestTrigger() {
   writeConfig_(cfg);
 }
 
-/** Sends each active user the open alerts they own; Head – QA also gets every Critical alert. */
+/** Sends each active user the open alerts they own; Lead – QA also gets every Critical alert. */
 function dailyDigest() {
   const cfg = readConfig_();
   if (!cfg.digestEnabled) return;
@@ -48,7 +48,7 @@ function dailyDigest() {
   const proj = {};
   db.Projects.forEach((p) => { proj[p.id] = p; });
   db.Users.filter((u) => u.active !== false && u.role !== 'VIEWER').forEach((u) => {
-    const mine = dash.alerts.filter((a) => String(a.owner).toLowerCase() === String(u.email).toLowerCase() || (u.role === 'HQ' && a.severity === 'Critical'));
+    const mine = dash.alerts.filter((a) => String(a.owner).toLowerCase() === String(u.email).toLowerCase() || (isLead_(u) && a.severity === 'Critical'));
     if (!mine.length) return;
     const lines = mine.slice(0, 30).map((a) => '• [' + a.severity + '] ' + (proj[a.projectId] ? proj[a.projectId].code + ' — ' : '') + a.title + '\n   ' + a.detail);
     MailApp.sendEmail({

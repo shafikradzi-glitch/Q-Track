@@ -20,13 +20,13 @@ function setup() {
   const blank = ss.getSheetByName('Sheet1');
   if (blank && blank.getLastRow() === 0 && ss.getSheets().length > 1) ss.deleteSheet(blank);
 
-  // The person running setup becomes the first Head – QA.
+  // The person running setup becomes the first Lead – QA.
   const email = String(Session.getEffectiveUser().getEmail() || '').toLowerCase();
   const users = readTable_('Users');
   if (email && !users.some((u) => String(u.email).toLowerCase() === email)) {
     const stamp = nowStamp_();
-    writeRow_('Users', { id: nextId_('Users', users), email: email, name: email.split('@')[0], code: 'HQ', role: 'HQ', title: 'Head of QA', active: true, rev: 1, createdAt: stamp, createdBy: email, updatedAt: stamp, updatedBy: email });
-    audit_(email, 'setup', 'Users', '', 'first Head – QA account');
+    writeRow_('Users', { id: nextId_('Users', users), email: email, name: email.split('@')[0], code: 'LQ', role: 'LEAD', title: 'Lead – QA', active: true, rev: 1, createdAt: stamp, createdBy: email, updatedAt: stamp, updatedBy: email });
+    audit_(email, 'setup', 'Users', '', 'first Lead – QA account');
   }
   notify_('Q-TRACK is set up. Next: Deploy → New deployment → Web app (Execute as: Me; Who has access: Anyone within your organisation).');
 }
@@ -47,6 +47,7 @@ function sampleRecords_(today, hqEmail) {
   const per = (n) => shiftPeriod_(periodOf_(today), n);
   const U = (k) => k + '@sample.example';
   const users = [
+    { email: U('mgr.civil'), name: 'Hafiz Omar (sample)', code: 'M1', role: 'MGR', title: 'QA Manager — Civil', active: true },
     { email: U('am.civil'), name: 'Aina Rahman (sample)', code: 'S1', role: 'AM', title: 'QA Assistant Manager — Civil', active: true },
     { email: U('am.systems'), name: 'Daniel Lim (sample)', code: 'R1', role: 'AM', title: 'QA Assistant Manager — Systems', active: true },
     { email: U('am.buildings'), name: 'Farid Hassan (sample)', code: 'I2', role: 'AM', title: 'QA Assistant Manager — Buildings, M&E, IT', active: true },
@@ -133,6 +134,7 @@ function sampleRecords_(today, hqEmail) {
     { title: 'SAMPLE pre-award QA review of RFP package 12', projectCode: 'DEMO-C', assignee: U('am.buildings'), due: d(6), priority: 'Normal', status: 'Not started', func: 'L4-F05' },
     { title: 'SAMPLE monthly assessment DEMO-PML', projectCode: 'DEMO-PML', assignee: U('am.civil'), due: d(2), priority: 'High', status: 'Submitted', func: 'L4-F02' },
     { title: 'SAMPLE update the L4/L5 register load', projectCode: '', assignee: U('clerk'), due: d(1), priority: 'Normal', status: 'In progress', func: 'L4-F21' },
+    { title: 'SAMPLE review PML hold-point sampling plan', projectCode: 'DEMO-PML', assignee: U('mgr.civil'), due: d(5), priority: 'Normal', status: 'Not started', func: 'L4-F02' },
   ];
   const weekly = [
     { weekEnd: fridayOf_(d(-7)), projectCode: 'DEMO-PML', func: 'L4-F15', exceptions: 'SAMPLE: two further lots failed re-check; escalated at Level C.', escalate: true, author: U('am.civil') },

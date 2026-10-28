@@ -17,7 +17,8 @@ const server = ORDER.map(read).join('\n;\n');
 const mock = fs.readFileSync(path.join(ROOT, 'tools', 'gas-mock.js'), 'utf8');
 
 const PEOPLE = [
-  ['head.qa@mrt.example', 'Head – QA'],
+  ['lead.qa@mrt.example', 'Lead – QA'],
+  ['mgr.civil@sample.example', 'Manager (Civil)'],
   ['am.civil@sample.example', 'Assistant Manager (Civil)'],
   ['am.systems@sample.example', 'Assistant Manager (Systems)'],
   ['clerk@sample.example', 'Admin clerk'],
@@ -26,7 +27,7 @@ const PEOPLE = [
 
 const glueTemplate = `
 (function () {
-  var M = GasMock.makeMock({ user: 'head.qa@mrt.example', owner: 'head.qa@mrt.example' });
+  var M = GasMock.makeMock({ user: 'lead.qa@mrt.example', owner: 'lead.qa@mrt.example' });
   Object.keys(M.services).forEach(function (k) { window[k] = M.services[k]; });
   window.__QT_MOCK__ = M;
 })();
@@ -39,10 +40,10 @@ const glueTemplate = `
   var M = window.__QT_MOCK__;
   setup();
   loadSampleData();
-  // Rename the first Head – QA so the preview reads naturally.
+  // Rename the first Lead – QA so the preview reads naturally.
   (function () {
     var sh = M.spreadsheet.getSheetByName('Users'), head = sh.data[0];
-    sh.data.forEach(function (r, i) { if (i && r[head.indexOf('email')] === 'head.qa@mrt.example') { r[head.indexOf('name')] = 'Shafik Radzi (preview)'; r[head.indexOf('title')] = 'Senior Quality Manager, Head of QA'; } });
+    sh.data.forEach(function (r, i) { if (i && r[head.indexOf('email')] === 'lead.qa@mrt.example') { r[head.indexOf('name')] = 'Shafik Radzi (preview)'; r[head.indexOf('title')] = 'Senior Quality Manager, Lead – QA'; } });
   })();
   var PEOPLE = @@PEOPLE@@;
   try { var who = new URLSearchParams(location.search).get('as'); if (who) { var p = PEOPLE.find(function (x) { return x[0].indexOf(who) === 0; }); if (p) M.setUser(p[0]); } } catch (e) {}

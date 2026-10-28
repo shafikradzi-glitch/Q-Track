@@ -67,13 +67,13 @@ function bootstrap_() {
     dashboard: dash,
     ownProjects: ownProjectIds_(user, db.Projects),
     lastChange: lastChange,
-    sheetUrl: user.role === 'HQ' ? ss_().getUrl() : '',
+    sheetUrl: isLead_(user) ? ss_().getUrl() : '',
   };
 }
 
 function auditList_(p) {
   const u = me_();
-  if (u.role !== 'HQ') throw new AppError('DENIED', 'The audit log is open to Head – QA only.');
+  if (!isLead_(u)) throw new AppError('DENIED', 'The audit log is open to Lead – QA only.');
   const sh = sheetOf_(AUDIT_SHEET);
   const n = sh.getLastRow() - 1;
   if (n < 1) return [];
@@ -100,7 +100,7 @@ function clean_(table, input, before, u, db, today) {
   const projects = db.Projects.map((x) => x.id);
   t.fields.forEach((f) => {
     if (f.sys) return;
-    if (f.hqOnly && u.role !== 'HQ') { if (before) out[f.k] = before[f.k]; return; }
+    if (f.leadOnly && !isLead_(u)) { out[f.k] = before ? before[f.k] : f.type === 'bool' ? false : f.type === 'json' ? f.def : ''; return; }
     let v = input.hasOwnProperty(f.k) ? input[f.k] : before ? before[f.k] : resolveDefault_(f.def, u, today);
     if (v === undefined || v === null) v = f.type === 'bool' ? false : f.type === 'json' ? f.def : '';
     switch (f.type) {
@@ -138,7 +138,7 @@ function hooks_(table, rec, before, u, db) {
     rec.email = rec.email.toLowerCase();
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(rec.email)) throw new AppError('INVALID', 'Enter a valid e-mail address.');
     if (dupe(db.Users, (r) => String(r.email).toLowerCase() === rec.email)) throw new AppError('INVALID', rec.email + ' already has an account.');
-    if (before && before.email.toLowerCase() === String(u.email).toLowerCase() && (rec.role !== 'HQ' || rec.active === false) && u.role === 'HQ' && db.Users.filter((x) => x.role === 'HQ' && x.active !== false).length < 2) throw new AppError('INVALID', 'Keep at least one active Head – QA account.');
+    if (before && before.email.toLowerCase() === String(u.email).toLowerCase() && (rec.role !== 'LEAD' || rec.active === false) && isLead_(u) && db.Users.filter((x) => x.role === 'LEAD' && x.active !== false).length < 2) throw new AppError('INVALID', 'Keep at least one active Lead – QA account.');
   }
   if (table === 'Projects' && dupe(db.Projects, (r) => String(r.code).toLowerCase() === String(rec.code).toLowerCase())) throw new AppError('INVALID', 'Project code ' + rec.code + ' is already used.');
   if (table === 'NCRs' && dupe(db.NCRs, (r) => r.projectId === rec.projectId && String(r.ref).toLowerCase() === String(rec.ref).toLowerCase())) throw new AppError('INVALID', rec.ref + ' is already recorded for this project.');
@@ -148,8 +148,8 @@ function hooks_(table, rec, before, u, db) {
     if (dupe(db.Reports, (r) => r.period === rec.period)) throw new AppError('INVALID', 'A report for ' + rec.period + ' already exists.');
   }
   if (table === 'Assessments') {
-    if (before && ['Draft', 'Returned'].indexOf(before.state) < 0 && !(u.role === 'HQ' && before.state === 'Submitted')) throw new AppError('LOCKED', 'This assessment is ' + before.state.toLowerCase() + ' and can no longer be edited.');
-    // At review Head – QA may only moderate; the assessor's ratings and evidence stay as submitted.
+    if (before && ['Draft', 'Returned'].indexOf(before.state) < 0 && !(isLead_(u) && before.state === 'Submitted')) throw new AppError('LOCKED', 'This assessment is ' + before.state.toLowerCase() + ' and can no longer be edited.');
+    // At review Lead – QA may only moderate; the assessor's ratings and evidence stay as submitted.
     if (before && before.state === 'Submitted') TABLES.Assessments.fields.forEach((f) => { if (f.k !== 'moderatedTo' && f.k !== 'moderationNote') rec[f.k] = before[f.k]; });
     if (dupe(db.Assessments, (r) => r.projectId === rec.projectId && r.period === rec.period)) throw new AppError('INVALID', 'An assessment for this project and period already exists.');
     if (!Array.isArray(rec.evidence)) rec.evidence = [];
@@ -200,7 +200,7 @@ function remove_(p) {
     const rows = readTable_(p.table);
     const rec = rows.find((r) => r.id === p.id);
     if (!rec) throw new AppError('NOT_FOUND', 'That record no longer exists.');
-    if (!canDelete_(p.table, u, rec)) throw new AppError('DENIED', 'Only Head – QA deletes records. Set the status to Closed or Cancelled instead.');
+    if (!canDelete_(p.table, u, rec)) throw new AppError('DENIED', 'Only Lead – QA deletes records. Set the status to Closed or Cancelled instead.');
     if (p.table === 'Assessments' && rec.state === 'Approved') throw new AppError('LOCKED', 'Approved assessments are kept as the record of assurance.');
     if (p.table === 'Reports' && rec.state === 'Issued') throw new AppError('LOCKED', 'Issued reports are kept as the record.');
     deleteRow_(p.table, rec._row);
@@ -216,17 +216,16 @@ function assessmentMove_(p, move) {
     const a = db.Assessments.find((r) => r.id === p.id);
     if (!a) throw new AppError('NOT_FOUND', 'Assessment not found.');
     if (Number(a.rev) !== Number(p.rev)) throw new AppError('CONFLICT', 'This assessment changed since you opened it. Reload and try again.');
-    const own = ownProjectIds_(u, db.Projects).indexOf(a.projectId) >= 0;
-    const stamp = nowStamp_();
+        const stamp = nowStamp_();
     if (move === 'submit') {
-      if (!(u.role === 'HQ' || (u.role === 'AM' && own))) throw new AppError('DENIED', 'Only the project’s QA lead or deputy, or Head – QA, submits an assessment.');
+      if (!canSubmitAssessment_(u, a, db.Projects)) throw new AppError('DENIED', 'Only the project’s QA lead or deputy, a Manager or Lead – QA submits an assessment.');
       if (['Draft', 'Returned'].indexOf(a.state) < 0) throw new AppError('LOCKED', 'Only a draft or returned assessment can be submitted.');
       const missing = AREAS.filter((ar, i) => { const s = a['a' + (i + 1)]; return s !== 'N/A' && s !== 'Green' && !String((a.evidence || [])[i] || '').trim(); });
       if (missing.length) throw new AppError('INVALID', 'Give the evidence basis for every area that is not Green or N/A: ' + missing.map((m) => m.n).join(', ') + '.');
       if (!String(a.conclusion || '').trim()) throw new AppError('INVALID', 'Write the overall conclusion before submitting.');
       a.state = 'Submitted'; a.submittedAt = stamp; a.returnNote = '';
     } else {
-      if (u.role !== 'HQ') throw new AppError('DENIED', 'Only Head – QA approves or returns assessments.');
+      if (!isLead_(u)) throw new AppError('DENIED', 'Only Lead – QA approves or returns assessments.');
       if (a.state !== 'Submitted') throw new AppError('LOCKED', 'Only a submitted assessment can be ' + (move === 'approve' ? 'approved' : 'returned') + '.');
       if (move === 'approve') {
         a.state = 'Approved'; a.approvedBy = u.email; a.approvedAt = stamp; a.final = a.moderatedTo || a.overall;
@@ -246,7 +245,7 @@ function reportIssue_(p) {
   return withLock_(() => {
     const db = loadDb_();
     const u = me_(db.Users);
-    if (u.role !== 'HQ') throw new AppError('DENIED', 'Only Head – QA issues the monthly report.');
+    if (!isLead_(u)) throw new AppError('DENIED', 'Only Lead – QA issues the monthly report.');
     const r = db.Reports.find((x) => x.id === p.id);
     if (!r) throw new AppError('NOT_FOUND', 'Report not found.');
     if (r.state === 'Issued') throw new AppError('LOCKED', 'Already issued.');
@@ -277,7 +276,7 @@ function reportIssue_(p) {
 function configSave_(p) {
   return withLock_(() => {
     const u = me_();
-    if (u.role !== 'HQ') throw new AppError('DENIED', 'Only Head – QA changes settings.');
+    if (!isLead_(u)) throw new AppError('DENIED', 'Only Lead – QA changes settings.');
     const cfg = readConfig_();
     CONFIG_FIELDS.forEach((f) => {
       if (!(f.k in (p.config || {}))) return;
@@ -301,7 +300,7 @@ function importRows_(p) {
   const run = () => {
     const db = loadDb_(['Users', 'Projects'].concat(['Users', 'Projects'].indexOf(table) < 0 ? [table] : []));
     const u = me_(db.Users);
-    if (u.role !== 'HQ' && u.role !== 'CLERK') throw new AppError('DENIED', 'Imports are run by Head – QA or the admin clerk.');
+    if (!isLead_(u) && u.role !== 'CLERK') throw new AppError('DENIED', 'Imports are run by Lead – QA or the admin clerk.');
     const t = TABLES[table];
     const byLabel = {};
     t.fields.forEach((f) => { byLabel[f.k.toLowerCase()] = f.k; byLabel[f.label.toLowerCase()] = f.k; });

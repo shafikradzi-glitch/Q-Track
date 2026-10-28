@@ -13,7 +13,8 @@ const ROOT = path.join(__dirname, '..', 'apps-script');
 const ORDER = ['Config.gs', 'Rules.gs', 'Db.gs', 'Auth.gs', 'Api.gs', 'Setup.gs', 'Code.gs'];
 const SOURCE = ORDER.map((f) => fs.readFileSync(path.join(ROOT, f), 'utf8')).join('\n;\n');
 
-const HQ = 'hq@mrt.example';
+const HQ = 'lead.qa@mrt.example';
+const MGR = 'mgr.civil@sample.example';
 const AM_CIVIL = 'am.civil@sample.example';
 const AM_SYS = 'am.systems@sample.example';
 const CLERK = 'clerk@sample.example';
@@ -128,12 +129,12 @@ test('milestone status and variance', () => {
 });
 
 /* ---------------- setup and access ---------------- */
-test('setup creates every tab and the first Head – QA', () => {
+test('setup creates every tab and the first Lead – QA', () => {
   const { ctx, mock, ok } = fresh(false);
   Object.keys(ctx.TABLES || {}).forEach(() => {});
   ['Users', 'Projects', 'Assessments', 'Findings', 'NCRs', 'Escalations', 'Milestones', 'Risks', 'Tasks', 'Weekly', 'Reports', 'Config', 'Audit'].forEach((t) => assert.ok(mock.spreadsheet.getSheetByName(t), t + ' tab'));
   const b = ok(HQ, 'bootstrap');
-  assert.strictEqual(b.me.role, 'HQ');
+  assert.strictEqual(b.me.role, 'LEAD');
   assert.strictEqual(b.data.Users.length, 1);
   ctx.setup();
   assert.strictEqual(ok(HQ, 'bootstrap').data.Users.length, 1, 'setup is idempotent');
@@ -228,6 +229,42 @@ test('values that look like formulas are stored as text', () => {
   assert.ok(mock.spreadsheet.getSheetByName('Audit').getLastRow() > 1);
 });
 
+test('Manager works across every project, cannot approve, issue, manage users or delete', () => {
+  const { ok, no } = fresh(true);
+  const b = ok(MGR, 'bootstrap');
+  assert.strictEqual(b.me.role, 'MGR');
+  assert.strictEqual(b.ownProjects.length, 0, 'the sample Manager has no allocation and still works everywhere');
+  const b2 = b.data.Projects.find((p) => p.code === 'DEMO-B');
+  const f = ok(MGR, 'save', { table: 'Findings', record: { projectId: b2.id, title: 'Manager finding', severity: 'Minor', responsibleParty: 'Sample Contractor B' } });
+  ok(MGR, 'save', { table: 'Risks', record: { projectId: b2.id, title: 'Manager risk', rating: 'Medium' } });
+  ok(MGR, 'save', { table: 'NCRs', record: { projectId: b2.id, ref: 'MGR-1', type: 'NCR', raisedDate: '2026-10-01', status: 'Open' } });
+  const p2 = ok(MGR, 'save', { table: 'Projects', record: Object.assign({}, b2, { stage: 'S6 Handover' }) });
+  no(MGR, 'save', { table: 'Projects', record: Object.assign({}, p2, { tier: '1' }) }, 'DENIED');
+  no(MGR, 'save', { table: 'Projects', record: { code: 'MGR-NEW', name: 'n', programme: 'PML', tier: '1', status: 'Active' } }, 'DENIED');
+  no(MGR, 'save', { table: 'Users', record: { email: 'x@mrt.example', name: 'X', role: 'AM' } }, 'DENIED');
+  no(MGR, 'save', { table: 'Reports', record: { period: '2026-09' } }, 'DENIED');
+  no(MGR, 'remove', { table: 'Findings', id: f.id }, 'DENIED');
+  no(MGR, 'configSave', { config: { coverageTarget: 50 } }, 'DENIED');
+  no(MGR, 'auditList', {}, 'DENIED');
+  no(MGR, 'importRows', { table: 'NCRs', rows: [], commit: false }, 'DENIED');
+  // Tasks: assign to others, re-date, accept others' deliverables, not their own
+  const t = ok(MGR, 'save', { table: 'Tasks', record: { title: 'Assigned by the Manager', assignee: AM_SYS, due: '2030-01-01', status: 'Not started' } });
+  const t2 = ok(MGR, 'save', { table: 'Tasks', record: Object.assign({}, t, { due: '2030-02-01', assignee: AM_CIVIL }) });
+  const t3 = ok(AM_CIVIL, 'save', { table: 'Tasks', record: Object.assign({}, t2, { status: 'Submitted' }) });
+  ok(MGR, 'save', { table: 'Tasks', record: Object.assign({}, t3, { status: 'Accepted' }) });
+  const mine = ok(MGR, 'save', { table: 'Tasks', record: { title: 'My own deliverable', assignee: MGR, status: 'Submitted' } });
+  no(MGR, 'save', { table: 'Tasks', record: Object.assign({}, mine, { status: 'Accepted' }) }, 'DENIED');
+  // Assessments: prepare and submit anywhere; approval stays with Lead – QA
+  const a0 = { projectId: b2.id, period: '2030-03', a1: 'Green', a2: 'Green', a3: 'Green', a4: 'Green', a5: 'Green', a6: 'Green', a7: 'Green', a8: 'Green', a9: 'Green', a10: 'N/A', evidence: [], conclusion: 'Controls operating.', moderatedTo: 'Amber', moderationNote: 'A Manager may not moderate.' };
+  let a = ok(MGR, 'save', { table: 'Assessments', record: a0 });
+  assert.strictEqual(a.moderatedTo, '', 'moderation ignored for a Manager');
+  a = ok(MGR, 'assessmentSubmit', { id: a.id, rev: a.rev });
+  assert.strictEqual(a.state, 'Submitted');
+  no(MGR, 'assessmentApprove', { id: a.id, rev: a.rev }, 'DENIED');
+  no(MGR, 'assessmentReturn', { id: a.id, rev: a.rev, note: 'Not mine to return.' }, 'DENIED');
+  assert.strictEqual(ok(MGR, 'bootstrap').data.Reports.length, 0, 'draft reports hidden from Managers');
+});
+
 test('assessment workflow: draft → submit → return → submit → approve, then frozen', () => {
   const { ok, no } = fresh(true);
   const b = ok(AM_CIVIL, 'bootstrap');
@@ -249,7 +286,7 @@ test('assessment workflow: draft → submit → return → submit → approve, t
   a = ok(HQ, 'assessmentReturn', { id: a.id, rev: a.rev, note: 'Add the sample size for area 4.' });
   assert.strictEqual(a.state, 'Returned');
   a = ok(AM_CIVIL, 'save', { table: 'Assessments', record: Object.assign({}, a, { moderatedTo: 'Green', moderationNote: 'An assessor may not moderate.' }) });
-  assert.strictEqual(a.moderatedTo, '', 'moderation is Head – QA only and is ignored for others');
+  assert.strictEqual(a.moderatedTo, '', 'moderation is Lead – QA only and is ignored for others');
   a = ok(AM_CIVIL, 'assessmentSubmit', { id: a.id, rev: a.rev });
   no(HQ, 'save', { table: 'Assessments', record: Object.assign({}, a, { moderatedTo: 'Green', moderationNote: 'Two levels is not allowed.' }) }, 'INVALID');
   const kept = ok(HQ, 'save', { table: 'Assessments', record: Object.assign({}, a, { a3: 'Green', conclusion: 'Rewritten by reviewer' }) });
@@ -269,7 +306,7 @@ test('assessment workflow: draft → submit → return → submit → approve, t
   assert.strictEqual(heat.period, '2030-01');
 });
 
-test('tasks: owners update their own, only Head – QA accepts or re-dates', () => {
+test('tasks: owners update their own, only Lead – QA accepts or re-dates', () => {
   const { ok, no } = fresh(true);
   const t = ok(HQ, 'bootstrap').data.Tasks.find((x) => x.assignee === AM_SYS);
   no(AM_CIVIL, 'save', { table: 'Tasks', record: Object.assign({}, t, { status: 'Submitted' }) }, 'DENIED');
@@ -281,9 +318,9 @@ test('tasks: owners update their own, only Head – QA accepts or re-dates', () 
   ok(CLERK, 'save', { table: 'Tasks', record: { title: 'My own', status: 'Not started' } });
 });
 
-test('users: clerk cannot grant Head – QA; last Head – QA cannot demote themself', () => {
+test('users: clerk cannot grant Lead – QA; last Lead – QA cannot demote themself', () => {
   const { ok, no } = fresh(true);
-  no(CLERK, 'save', { table: 'Users', record: { email: 'new@mrt.example', name: 'New', role: 'HQ' } }, 'DENIED');
+  no(CLERK, 'save', { table: 'Users', record: { email: 'new@mrt.example', name: 'New', role: 'LEAD' } }, 'DENIED');
   const u = ok(CLERK, 'save', { table: 'Users', record: { email: 'New.Person@MRT.example', name: 'New', role: 'AM' } });
   assert.strictEqual(u.email, 'new.person@mrt.example');
   no(CLERK, 'save', { table: 'Users', record: { email: 'new.person@mrt.example', name: 'Dupe', role: 'AM' } }, 'INVALID');
@@ -295,7 +332,7 @@ test('users: clerk cannot grant Head – QA; last Head – QA cannot demote them
   assert.strictEqual(off.active, false);
 });
 
-test('delete: Head – QA only (own weekly updates excepted)', () => {
+test('delete: Lead – QA only (own weekly updates excepted)', () => {
   const { ok, no } = fresh(true);
   const b = ok(HQ, 'bootstrap');
   no(AM_CIVIL, 'remove', { table: 'Risks', id: b.data.Risks[0].id }, 'DENIED');
@@ -342,7 +379,7 @@ test('import: all-or-nothing with row errors, project codes accepted', () => {
   assert.strictEqual(dupe.errors.length, 1, 'duplicate reference rejected');
 });
 
-test('settings: Head – QA only, bands must increase', () => {
+test('settings: Lead – QA only, bands must increase', () => {
   const { ok, no } = fresh(true);
   no(AM_CIVIL, 'configSave', { config: { coverageTarget: 50 } }, 'DENIED');
   no(HQ, 'configSave', { config: { ncrBand1: 60, ncrBand2: 30 } }, 'INVALID');
@@ -366,12 +403,12 @@ test('daily digest e-mails owners their alerts', () => {
   assert.strictEqual(mock.mail.length, 0, 'off by default');
   ok(HQ, 'configSave', { config: { digestEnabled: true } });
   ctx.dailyDigest();
-  assert.ok(mock.mail.length >= 2);
+  assert.ok(mock.mail.length >= 3);
   assert.ok(mock.mail.every((m) => /^Q-TRACK: \d+ open alert/.test(m.subject)));
   assert.ok(mock.mail.some((m) => m.to === AM_CIVIL));
 });
 
-test('audit log is Head – QA only', () => {
+test('audit log is Lead – QA only', () => {
   const { ok, no } = fresh(true);
   ok(HQ, 'save', { table: 'Risks', record: { projectId: ok(HQ, 'bootstrap').data.Projects[0].id, title: 'Audited risk', rating: 'Low' } });
   const log = ok(HQ, 'auditList', { limit: 10 });

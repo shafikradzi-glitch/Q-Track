@@ -27,7 +27,7 @@ fs.mkdirSync(OUT, { recursive: true });
   const nav = async (page, label) => { await page.locator('#nav button', { hasText: label }).first().click(); await page.waitForTimeout(250); };
   const ready = async (page) => { await page.waitForSelector('#content .ph', { timeout: 15000 }); await page.waitForTimeout(300); };
 
-  // Head – QA, desktop
+  // Lead – QA, desktop
   let p = await page0();
   await p.goto(URL); await ready(p);
   await shot(p, '01-command-centre');
@@ -98,8 +98,8 @@ fs.mkdirSync(OUT, { recursive: true });
   await p.waitForTimeout(400);
   await shot(p, '26-am-assessment-submitted');
   const assessId = (await p.locator('#crumb').textContent()).split(' · ')[0];
-  // Same browser session: switch to Head – QA and approve it
-  await p.selectOption('#pv-as', 'head.qa@mrt.example');
+  // Same browser session: switch to Lead – QA and approve it
+  await p.selectOption('#pv-as', 'lead.qa@mrt.example');
   await ready(p);
   await nav(p, 'My work');
   await p.locator('button.li', { hasText: assessId }).first().click();
@@ -108,7 +108,27 @@ fs.mkdirSync(OUT, { recursive: true });
   await p.locator('.modal button', { hasText: 'Approve' }).click();
   await p.waitForSelector('.toast.ok');
   await p.waitForTimeout(500);
-  await shot(p, '27-hq-approved');
+  await shot(p, '27-lead-approved');
+  await p.close();
+
+  // Manager: reaches every project, manages team tasks, cannot approve assessments
+  p = await page0();
+  await p.goto(URL + '?as=mgr.civil'); await ready(p);
+  await nav(p, 'My work'); await shot(p, '27b-mgr-my-work');
+  if (!(await p.locator('button', { hasText: 'New task' }).count())) throw new Error('Manager cannot create tasks');
+  await nav(p, 'Quality risks');
+  await p.locator('button', { hasText: 'Add risk' }).click();
+  await p.waitForSelector('.drawer.on');
+  const opts = await p.locator('#d-projectId option').allTextContents();
+  if (!opts.some((o) => /DEMO-B/.test(o))) throw new Error('Manager should reach every project, got ' + opts.join(' | '));
+  await p.keyboard.press('Escape');
+  await nav(p, 'Heat-map & assessments');
+  await p.locator('.tbl tbody tr', { hasText: 'Draft' }).first().click();
+  await p.waitForSelector('.areas');
+  if (await p.locator('button', { hasText: /^Approve$/ }).count()) throw new Error('Manager must not see Approve');
+  if (await p.locator('h2', { hasText: 'moderation' }).count()) throw new Error('Manager must not see the moderation card');
+  if (!(await p.locator('button', { hasText: 'Submit for approval' }).count())) throw new Error('Manager should be able to submit a draft on any project');
+  await shot(p, '27c-mgr-assessment-editor');
   await p.close();
 
   // Viewer

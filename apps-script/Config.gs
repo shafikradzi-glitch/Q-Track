@@ -14,7 +14,8 @@ const APP = {
 };
 
 const ROLES = {
-  HQ: 'Head – QA',
+  LEAD: 'Lead – QA',
+  MGR: 'Manager',
   AM: 'Assistant Manager',
   CLERK: 'Admin clerk',
   VIEWER: 'Management (read-only)',
@@ -38,7 +39,7 @@ const AREA_STATUS = ['Green', 'Amber', 'Red', 'Grey', 'N/A'];
 
 const PROGRAMMES = ['PML', 'RTS', 'L4/L5', 'Other'];
 
-/** Defaults for the Config tab. Thresholds stay Proposed until Head – QA approves them (RMM Annex A). */
+/** Defaults for the Config tab. Thresholds stay Proposed until Lead – QA approves them (RMM Annex A). */
 const CONFIG_DEFAULTS = {
   orgName: 'MRT Corporation — HQ QA Unit',
   coverageTarget: 90,
@@ -58,7 +59,7 @@ const CONFIG_FIELDS = [
   { k: 'ncrBand1', label: 'NCR ageing band 1 (days past expected completion)', type: 'number' },
   { k: 'ncrBand2', label: 'NCR ageing band 2 (days)', type: 'number' },
   { k: 'ncrBand3', label: 'NCR ageing band 3 (days)', type: 'number' },
-  { k: 'thresholdsApproved', label: 'Thresholds approved by Head – QA (removes the “Proposed” labels)', type: 'bool' },
+  { k: 'thresholdsApproved', label: 'Thresholds approved by Lead – QA (removes the “Proposed” labels)', type: 'bool' },
   { k: 'digestEnabled', label: 'Send each person a daily e-mail of their open alerts', type: 'bool' },
 ];
 
@@ -76,7 +77,7 @@ const TABLES = {
     fields: [
       { k: 'email', label: 'Google account e-mail', type: 'text', req: true, list: true },
       { k: 'name', label: 'Name', type: 'text', req: true, list: true },
-      { k: 'code', label: 'Short code', type: 'text', list: true, hint: 'For example HQ, S1, R1' },
+      { k: 'code', label: 'Short code', type: 'text', list: true, hint: 'For example LQ, M1, S1, R1' },
       { k: 'role', label: 'Role', type: 'enum', options: Object.keys(ROLES), labels: ROLES, req: true, list: true },
       { k: 'title', label: 'Designation', type: 'text', list: true },
       { k: 'active', label: 'Can sign in', type: 'bool', def: true, list: true },
@@ -131,8 +132,8 @@ const TABLES = {
       { k: 'reasons', label: 'Three principal reasons (facts)', type: 'longtext' },
       { k: 'limitations', label: 'Limitations and uncertainty', type: 'longtext' },
       { k: 'validator', label: 'Independent validator', type: 'user' },
-      { k: 'moderatedTo', label: 'Moderated overall (Head – QA, one level)', type: 'enum', options: ['', 'Green', 'Amber', 'Red'], hqOnly: true },
-      { k: 'moderationNote', label: 'Moderation rationale', type: 'longtext', hqOnly: true },
+      { k: 'moderatedTo', label: 'Moderated overall (Lead – QA, one level)', type: 'enum', options: ['', 'Green', 'Amber', 'Red'], leadOnly: true },
+      { k: 'moderationNote', label: 'Moderation rationale', type: 'longtext', leadOnly: true },
       { k: 'overall', label: 'Overall (worst area)', type: 'text', sys: true, list: true },
       { k: 'final', label: 'Final overall', type: 'text', sys: true },
       { k: 'state', label: 'State', type: 'text', sys: true, def: 'Draft', list: true },
@@ -247,7 +248,7 @@ const TABLES = {
     title: 'Tasks & deliverables',
     prefix: 'T',
     pad: 5,
-    describe: 'Work assigned within the QA Unit. Head – QA accepts or returns submitted deliverables.',
+    describe: 'Work assigned within the QA Unit. Lead – QA or a Manager accepts or returns submitted deliverables.',
     fields: [
       { k: 'title', label: 'Task or deliverable', type: 'text', req: true, list: true },
       { k: 'projectId', label: 'Project', type: 'project', list: true },

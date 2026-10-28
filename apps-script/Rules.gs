@@ -68,7 +68,7 @@ function areaStatuses(a) {
   return out;
 }
 
-/** Head – QA may move the overall result by one level, with a recorded rationale (RMM §9.2). */
+/** Lead – QA may move the overall result by one level, with a recorded rationale (RMM §9.2). */
 function checkModeration(overall, moderatedTo, note) {
   if (!moderatedTo) return null;
   if (!(overall in STATUS_RANK) || !(moderatedTo in STATUS_RANK)) return 'Only a Green, Amber or Red result can be moderated.';

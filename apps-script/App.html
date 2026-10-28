@@ -126,7 +126,10 @@
   const D = (t) => (S.boot.data[t] || []);
   const me = () => S.boot.me;
   const role = () => S.boot.me.role;
-  const isHQ = () => role() === 'HQ';
+  const isLead = () => role() === 'LEAD';
+  const isMgr = () => role() === 'MGR';
+  /** Managers and the clerk reach every project; Assistant Managers only their allocated ones. */
+  const inScope = (projectId) => isLead() || isMgr() || role() === 'CLERK' || own(projectId);
   const isStaff = () => role() !== 'VIEWER';
   const isMe = (email) => String(email || '').toLowerCase() === String(me().email).toLowerCase();
   const own = (projectId) => S.boot.ownProjects.indexOf(projectId) >= 0;
@@ -143,26 +146,26 @@
   function canCreate(t) {
     const r = role();
     if (r === 'VIEWER') return false;
-    if (r === 'HQ') return true;
+    if (r === 'LEAD') return true;
     if (t === 'Users' || t === 'Projects') return r === 'CLERK';
-    if (t === 'NCRs' || t === 'Milestones') return r === 'CLERK' || S.boot.ownProjects.length > 0;
-    if (t === 'Findings' || t === 'Escalations' || t === 'Risks' || t === 'Assessments') return r === 'AM' && S.boot.ownProjects.length > 0;
+    if (t === 'NCRs' || t === 'Milestones') return r === 'CLERK' || r === 'MGR' || S.boot.ownProjects.length > 0;
+    if (t === 'Findings' || t === 'Escalations' || t === 'Risks' || t === 'Assessments') return r === 'MGR' || (r === 'AM' && S.boot.ownProjects.length > 0);
     if (t === 'Tasks' || t === 'Weekly') return true;
     return false;
   }
   function canEdit(t, rec) {
     const r = role();
     if (!rec || r === 'VIEWER') return false;
-    if (t === 'Assessments' && ['Draft', 'Returned'].indexOf(rec.state) < 0 && !(r === 'HQ' && rec.state === 'Submitted')) return false;
+    if (t === 'Assessments' && ['Draft', 'Returned'].indexOf(rec.state) < 0 && !(r === 'LEAD' && rec.state === 'Submitted')) return false;
     if (t === 'Reports' && rec.state === 'Issued') return false;
-    if (r === 'HQ') return true;
+    if (r === 'LEAD') return true;
     switch (t) {
-      case 'Users': return r === 'CLERK' && rec.role !== 'HQ';
-      case 'Projects': return r === 'CLERK' || own(rec.id);
-      case 'NCRs': case 'Milestones': return r === 'CLERK' || own(rec.projectId);
-      case 'Assessments': case 'Escalations': case 'Risks': return r === 'AM' && own(rec.projectId);
-      case 'Findings': return r === 'AM' && (own(rec.projectId) || isMe(rec.qaOwner));
-      case 'Tasks': return isMe(rec.assignee);
+      case 'Users': return r === 'CLERK' && rec.role !== 'LEAD';
+      case 'Projects': return r === 'CLERK' || r === 'MGR' || own(rec.id);
+      case 'NCRs': case 'Milestones': return inScope(rec.projectId);
+      case 'Assessments': case 'Escalations': case 'Risks': return r !== 'CLERK' && inScope(rec.projectId);
+      case 'Findings': return r !== 'CLERK' && (inScope(rec.projectId) || isMe(rec.qaOwner));
+      case 'Tasks': return r === 'MGR' || isMe(rec.assignee);
       case 'Weekly': return isMe(rec.createdBy);
     }
     return false;
@@ -170,7 +173,7 @@
   function optionsFor(t, f, rec) {
     if (f.type === 'project') {
       let ps = D('Projects').slice().sort((a, b) => String(a.code).localeCompare(String(b.code)));
-      if (!isHQ() && role() === 'AM' && ['Assessments', 'Findings', 'Escalations', 'Risks', 'NCRs', 'Milestones'].indexOf(t) >= 0) ps = ps.filter((p) => own(p.id) || (rec && rec.projectId === p.id));
+      if (role() === 'AM' && ['Assessments', 'Findings', 'Escalations', 'Risks', 'NCRs', 'Milestones'].indexOf(t) >= 0) ps = ps.filter((p) => own(p.id) || (rec && rec.projectId === p.id));
       return ps.map((p) => ({ v: p.id, l: p.code + ' — ' + p.name }));
     }
     if (f.type === 'user') return D('Users').filter((u) => u.active !== false && u.role !== 'VIEWER').map((u) => ({ v: u.email, l: u.name + (u.code ? ' (' + u.code + ')' : '') }));
@@ -202,7 +205,7 @@
       opts.foot ? h('div', { class: 'cf' }, opts.foot) : null);
   }
   function l2tag() { return h('span', { class: 'tag l2', title: 'Level 2: project / contractor performance, not HQ QA output (DR-02)' }, 'Level 2 · project data'); }
-  function proptag() { return proposed() ? h('span', { class: 'tag prop', title: 'Thresholds stay Proposed until Head – QA approves them (RMM Annex A)' }, 'Proposed') : null; }
+  function proptag() { return proposed() ? h('span', { class: 'tag prop', title: 'Thresholds stay Proposed until Lead – QA approves them (RMM Annex A)' }, 'Proposed') : null; }
   function empty(msg, ic) { return h('div', { class: 'empty' }, icon(ic || 'inbox'), h('div', null, msg)); }
 
   function toast(msg, kind, ms) {
@@ -250,13 +253,13 @@
     { v: 'report', label: 'Monthly report', ic: 'report' },
     { grp: 'System', admin: true },
     { v: 'admin', label: 'Administration', ic: 'cog', admin: true },
-    { v: 'audit', label: 'Audit log', ic: 'audit', hq: true },
+    { v: 'audit', label: 'Audit log', ic: 'audit', lead: true },
   ];
   const TITLES = { command: 'Command Centre', mywork: 'My work', assessments: 'Heat-map & assessments', assessment: 'Level 4 assessment', project: 'Project', alerts: 'Alerts', report: 'Monthly management report', admin: 'Administration', audit: 'Audit log' };
   function navAllowed(n) {
     if (n.staff && !isStaff()) return false;
-    if (n.admin && !(isHQ() || role() === 'CLERK')) return false;
-    if (n.hq && !isHQ()) return false;
+    if (n.admin && !(isLead() || role() === 'CLERK')) return false;
+    if (n.lead && !isLead()) return false;
     return true;
   }
   function go(view, params, opts) {
@@ -384,7 +387,7 @@
           : h('span', { class: 'cell none', title: lab }, '·')));
       }
       const ov = r.overall;
-      tr.appendChild(h('td', null, h('span', { class: 'cell ov ' + (ov === 'Not assessed' ? 'none' : CELL_CLASS(ov)), title: r.moderated ? 'Moderated by Head – QA' : '' }, ov + (r.moderated ? ' *' : ''))));
+      tr.appendChild(h('td', null, h('span', { class: 'cell ov ' + (ov === 'Not assessed' ? 'none' : CELL_CLASS(ov)), title: r.moderated ? 'Moderated by Lead – QA' : '' }, ov + (r.moderated ? ' *' : ''))));
       tr.appendChild(h('td', { style: { textAlign: 'center' } }, r.change === 'worse' ? h('span', { class: 'chg worse' }, '▼ worse') : r.change === 'better' ? h('span', { class: 'chg better' }, '▲ better') : r.change === 'same' ? h('span', { class: 'muted xs' }, 'same') : h('span', { class: 'muted xs' }, r.period ? 'new' : '—')));
       if (!opts.compact) tr.appendChild(h('td', { class: 'xs muted', style: { textAlign: 'center', whiteSpace: 'nowrap' } }, r.period ? F.month(r.period) : '—'));
       tb.appendChild(tr);
@@ -632,7 +635,7 @@
     // Heat-map
     c.appendChild(card('Level 4 heat-map — ten assurance areas', 'Latest approved assessment per project. Overall = worst applicable area; Grey counts as Amber; Grey overall when more than a third of areas are Grey. Select a cell for its evidence.',
       heat.length ? h('div', { style: { display: 'flex', flexDirection: 'column', gap: '12px' } }, heatTable(heat), heatLegend()) : empty('No active projects in this programme.'),
-      { foot: 'Method: RMM v1.0 §9. Head – QA may moderate the overall by one level with a recorded rationale (*). Red means management intervention or heightened assurance is required, not that the project has failed.' }));
+      { foot: 'Method: RMM v1.0 §9. Lead – QA may moderate the overall by one level with a recorded rationale (*). Red means management intervention or heightened assurance is required, not that the project has failed.' }));
 
     // Alerts + decisions
     c.appendChild(h('div', { class: 'grid g2' },
@@ -689,7 +692,7 @@
   function myQueueCount() {
     if (!S.boot || !isStaff()) return 0;
     const mine = D('Tasks').filter((t) => isMe(t.assignee) && ['Accepted', 'Submitted'].indexOf(t.status) < 0).length;
-    const toApprove = isHQ() ? D('Assessments').filter((a) => a.state === 'Submitted').length + D('Tasks').filter((t) => t.status === 'Submitted').length : 0;
+    const toApprove = isLead() ? D('Assessments').filter((a) => a.state === 'Submitted').length + D('Tasks').filter((t) => t.status === 'Submitted').length : isMgr() ? D('Tasks').filter((t) => t.status === 'Submitted' && !isMe(t.assignee)).length : 0;
     const returned = D('Assessments').filter((a) => a.state === 'Returned' && own(a.projectId)).length;
     return mine + toApprove + returned;
   }
@@ -713,9 +716,9 @@
       kpiTile('Assessments to finish', String(myAss.length), myAss.filter((a) => a.state === 'Returned').length + ' returned for correction', myAss.some((a) => a.state === 'Returned') ? 'action' : myAss.length ? 'watch' : 'good', () => go('assessments')),
       kpiTile('Findings I monitor', String(myFind.length), myFind.filter((f) => f.responseDue && days(f.responseDue, asOf) > 0 && f.status === 'Open').length + ' past response date', '', () => go('Findings', { mine: true }))));
 
-    if (isHQ()) {
-      const subA = D('Assessments').filter((a) => a.state === 'Submitted');
-      const subT = D('Tasks').filter((t) => t.status === 'Submitted');
+    if (isLead() || isMgr()) {
+      const subA = isLead() ? D('Assessments').filter((a) => a.state === 'Submitted') : [];
+      const subT = D('Tasks').filter((t) => t.status === 'Submitted' && (isLead() || !isMe(t.assignee)));
       const q = h('div', { class: 'list' });
       subA.forEach((a) => q.appendChild(h('button', { class: 'li', onclick: () => go('assessment', { id: a.id }) }, chip('Submitted'), h('span', { class: 'body' }, h('b', null, 'Level 4 assessment ' + a.id + ' — ' + projLabel(a.projectId) + ', ' + F.month(a.period)), h('span', { class: 'small muted' }, 'Overall ' + a.overall + ' · submitted ' + F.stamp(a.submittedAt) + ' by ' + userName(a.updatedBy))), h('span', { class: 'side-r' }, 'Approve or return'))));
       subT.forEach((t) => q.appendChild(h('button', { class: 'li', onclick: () => openRecord('Tasks', t) }, chip('Submitted'), h('span', { class: 'body' }, h('b', null, t.title), h('span', { class: 'small muted' }, userName(t.assignee) + (t.due ? ' · due ' + F.date(t.due) : ''))), h('span', { class: 'side-r' }, 'Accept or return'))));
@@ -737,7 +740,7 @@
       const hr = B().dashboard.heat.find((x) => x.projectId === p.id);
       pl.appendChild(h('button', { class: 'li', onclick: () => go('project', { id: p.id }) }, chip(hr ? hr.overall : 'Not assessed'), h('span', { class: 'body' }, h('b', null, p.code + ' — ' + p.name), h('span', { class: 'small muted' }, p.programme + ' · Tier ' + p.tier + ' · ' + (isMe(p.lead) ? 'QA lead' : 'QA deputy'))), h('span', { class: 'side-r' }, hr && hr.period ? F.month(hr.period) : '')));
     });
-    c.appendChild(card('My allocated projects', myProjects.length + ' active', myProjects.length ? pl : empty('No projects are allocated to you yet. Head – QA allocates projects in the project register.', 'folder')));
+    c.appendChild(card('My allocated projects', myProjects.length + ' active', myProjects.length ? pl : empty('No projects are allocated to you yet. Lead – QA allocates projects in the project register.', 'folder')));
   };
 
   /* ---------------- Alerts ---------------- */
@@ -802,11 +805,11 @@
     const draft = S.params.draft || (S.params.draft = rec ? JSON.parse(JSON.stringify(rec)) : (() => {
       const o = { projectId: S.params.projectId || '', period: shiftPeriod(asOf.slice(0, 7), -1), confidence: 'Moderate', evidence: [] };
       for (let i = 1; i <= 10; i++) o['a' + i] = 'Grey';
-      if (!o.projectId) { const mine = D('Projects').filter((p) => p.status === 'Active' && (isHQ() || own(p.id))); if (mine.length === 1) o.projectId = mine[0].id; }
+      if (!o.projectId) { const mine = D('Projects').filter((p) => p.status === 'Active' && inScope(p.id)); if (mine.length === 1) o.projectId = mine[0].id; }
       return o;
     })());
     const state = rec ? rec.state : 'New';
-    // At review (Submitted) Head – QA moderates; the assessor's ratings and evidence stay as submitted.
+    // At review (Submitted) Lead – QA moderates; the assessor's ratings and evidence stay as submitted.
     const editable = (rec ? canEdit('Assessments', rec) : canCreate('Assessments')) && state !== 'Submitted';
     const p = projById(draft.projectId);
     setCrumb(rec ? rec.id + ' · ' + (p ? p.code : '') + ' · ' + F.month(rec.period) : 'New Level 4 assessment', 'Assurance assessment › Heat-map & assessments');
@@ -891,27 +894,27 @@
     const acts = [];
     if (editable && (state === 'New' || state === 'Draft' || state === 'Returned')) {
       const bs = h('button', { class: 'btn', onclick: () => { busy(bs, true); doSave().catch(fail).finally(() => busy(bs, false)); } }, 'Save draft');
-      const bsub = h('button', { class: 'btn primary', onclick: () => { busy(bsub, true); doSave((r) => call('assessmentSubmit', { id: r.id, rev: r.rev })).then((r) => { if (!r) return; patch('Assessments', r); S.params.draft = JSON.parse(JSON.stringify(r)); toast('Submitted to Head – QA for approval', 'ok'); refresh(); }).catch(fail).finally(() => busy(bsub, false)); } }, 'Submit for approval');
+      const bsub = h('button', { class: 'btn primary', onclick: () => { busy(bsub, true); doSave((r) => call('assessmentSubmit', { id: r.id, rev: r.rev })).then((r) => { if (!r) return; patch('Assessments', r); S.params.draft = JSON.parse(JSON.stringify(r)); toast('Submitted to Lead – QA for approval', 'ok'); refresh(); }).catch(fail).finally(() => busy(bsub, false)); } }, 'Submit for approval');
       acts.push(bs, bsub);
     }
-    if (rec && isHQ() && state === 'Submitted') {
+    if (rec && isLead() && state === 'Submitted') {
       const bsv = h('button', { class: 'btn', onclick: () => { busy(bsv, true); doSave().catch(fail).finally(() => busy(bsv, false)); } }, 'Save moderation');
       const bret = h('button', { class: 'btn danger', onclick: () => promptBox('Return for correction', 'Say what needs to change. The assessor sees this note.', 'Return').then((note) => { if (!note) return; call('assessmentReturn', { id: rec.id, rev: rec.rev, note: note }).then((r) => { patch('Assessments', r); S.params.draft = JSON.parse(JSON.stringify(r)); toast('Returned to the assessor', 'ok'); refresh(); }).catch(fail); }) }, 'Return');
       const bok = h('button', { class: 'btn good', onclick: () => confirmBox('Approve this assessment?', 'Approval freezes ' + rec.id + ' as HQ QA’s Level 4 conclusion for ' + projLabel(rec.projectId) + ', ' + F.month(rec.period) + ' (overall ' + (draft.moderatedTo || overallNow()) + '). Unsaved moderation changes are saved first.', 'Approve').then((y) => { if (!y) return; doSave((r) => call('assessmentApprove', { id: r.id, rev: r.rev })).then((r) => { patch('Assessments', r); S.params.draft = JSON.parse(JSON.stringify(r)); toast('Approved — the heat-map now shows ' + r.final, 'ok'); refresh(); }).catch(fail); }) }, 'Approve');
       acts.push(bsv, bret, bok);
     }
-    if (rec && isHQ() && state !== 'Approved') acts.push(h('button', { class: 'btn ghost danger', onclick: () => confirmBox('Delete ' + rec.id + '?', 'The draft is removed from the Sheet. The audit log keeps a copy.', 'Delete').then((y) => { if (y) call('remove', { table: 'Assessments', id: rec.id }).then(() => { unpatch('Assessments', rec.id); toast('Deleted', 'ok'); back(); refresh(); }).catch(fail); }) }, 'Delete'));
+    if (rec && isLead() && state !== 'Approved') acts.push(h('button', { class: 'btn ghost danger', onclick: () => confirmBox('Delete ' + rec.id + '?', 'The draft is removed from the Sheet. The audit log keeps a copy.', 'Delete').then((y) => { if (y) call('remove', { table: 'Assessments', id: rec.id }).then(() => { unpatch('Assessments', rec.id); toast('Deleted', 'ok'); back(); refresh(); }).catch(fail); }) }, 'Delete'));
 
-    const moderation = isHQ() && (state === 'Submitted' || ((state === 'Draft' || state === 'New' || state === 'Returned') && editable))
-      ? card('Head – QA moderation', 'Move the overall by one level only, with a rationale (RMM §9.2).', h('div', { class: 'form' },
+    const moderation = isLead() && (state === 'Submitted' || ((state === 'Draft' || state === 'New' || state === 'Returned') && editable))
+      ? card('Lead – QA moderation', 'Move the overall by one level only, with a rationale (RMM §9.2).', h('div', { class: 'form' },
           h('div', { class: 'field full' }, h('label', { for: 'f-mod' }, 'Moderated overall'), h('select', { class: 'input', id: 'f-mod', onchange: (e) => { draft.moderatedTo = e.target.value; drawOverall(); } }, ['', 'Green', 'Amber', 'Red'].map((o) => h('option', { value: o, selected: (draft.moderatedTo || '') === o ? true : null }, o || 'No moderation')))),
           (() => { const t = h('textarea', { class: 'input', id: 'f-modnote', rows: 3, oninput: (e) => { draft.moderationNote = e.target.value; } }); t.value = draft.moderationNote || ''; return h('div', { class: 'field full' }, h('label', { for: 'f-modnote' }, 'Rationale'), t); })()))
       : draft.moderatedTo ? card('Moderation', null, h('p', null, 'Moderated to ' + draft.moderatedTo + ': ' + (draft.moderationNote || ''))) : null;
 
     c.appendChild(h('div', { class: 'toolbar no-print' }, h('button', { class: 'btn ghost', onclick: back }, icon('back'), 'Back'), h('div', { class: 'sp' }), acts));
     c.appendChild(pageHead(rec ? (p ? p.code : '') + ' — Level 4 assessment, ' + F.month(rec.period) : 'New Level 4 assessment', p ? p.name + ' · ' + p.programme + ' · Tier ' + p.tier + (p.tierStatus === 'Provisional' ? ' (provisional)' : '') : 'Choose the project and period, rate each area and give the evidence basis.', null, h('div', { style: { display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' } }, stepBar, rec ? h('span', { class: 'xs muted' }, 'Rev ' + rec.rev + ' · updated ' + F.stamp(rec.updatedAt) + ' by ' + userName(rec.updatedBy)) : null)));
-    if (rec && rec.state === 'Returned' && rec.returnNote) c.appendChild(h('div', { class: 'banner warn' }, icon('alert'), 'Returned by Head – QA: ' + rec.returnNote));
-    if (!editable && rec && rec.state !== 'Approved' && isStaff()) c.appendChild(h('div', { class: 'banner info' }, icon('info'), rec.state === 'Submitted' ? (isHQ() ? 'Submitted for your approval. Review the ratings and evidence, moderate by one level if needed, then approve or return it.' : 'Submitted and waiting for Head – QA. It can no longer be edited by the assessor.') : 'You can view this assessment but not change it.'));
+    if (rec && rec.state === 'Returned' && rec.returnNote) c.appendChild(h('div', { class: 'banner warn' }, icon('alert'), 'Returned by Lead – QA: ' + rec.returnNote));
+    if (!editable && rec && rec.state !== 'Approved' && isStaff()) c.appendChild(h('div', { class: 'banner info' }, icon('info'), rec.state === 'Submitted' ? (isLead() ? 'Submitted for your approval. Review the ratings and evidence, moderate by one level if needed, then approve or return it.' : 'Submitted and waiting for Lead – QA. It can no longer be edited by the assessor.') : 'You can view this assessment but not change it.'));
 
     c.appendChild(h('div', { class: 'editor' },
       h('div', { style: { display: 'flex', flexDirection: 'column', gap: '16px' } },
@@ -952,7 +955,7 @@
     const tab = S.params.tab || 'overview';
     c.appendChild(h('div', { class: 'toolbar no-print' }, h('button', { class: 'btn ghost', onclick: back }, icon('back'), 'Back'), h('div', { class: 'sp' }),
       canEdit('Projects', p) ? h('button', { class: 'btn', onclick: () => openRecord('Projects', p) }, 'Edit project') : h('button', { class: 'btn', onclick: () => openRecord('Projects', p) }, 'Project details'),
-      canCreate('Assessments') && (isHQ() || own(p.id)) ? h('button', { class: 'btn primary', onclick: () => go('assessment', { id: null, projectId: p.id }) }, icon('plus'), 'Start an assessment') : null));
+      canCreate('Assessments') && inScope(p.id) ? h('button', { class: 'btn primary', onclick: () => go('assessment', { id: null, projectId: p.id }) }, icon('plus'), 'Start an assessment') : null));
     c.appendChild(pageHead(p.code + ' — ' + p.name, null, null, h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' } },
       chip(hr ? hr.overall : 'Not assessed', 'lg'), h('span', { class: 'chip plain' }, p.programme), h('span', { class: 'chip plain' }, 'Tier ' + p.tier + (p.tierStatus === 'Provisional' ? ' · provisional' : '')),
       p.stage ? h('span', { class: 'chip plain' }, p.stage) : null, chip(p.status), h('span', { class: 'small muted' }, 'QA lead ' + userName(p.lead) + (p.deputy ? ' · deputy ' + userName(p.deputy) : '')))));
@@ -1052,7 +1055,7 @@
       if (sc.level2) c.appendChild(h('div', { class: 'banner info' }, icon('info'), 'Project NCRs and observations are Level 2 records owned by the project / contractor. Counts here are project performance, not HQ QA output (DR-02). HQ QA does not own or close them (DR-03).'));
       if (t === 'NCRs') ncrInsights(c, rows);
       if (S.params.projectId) c.appendChild(h('div', { class: 'banner info' }, icon('info'), 'Showing ' + projLabel(S.params.projectId) + ' only. ', h('button', { class: 'btn sm', onclick: () => { S.params.projectId = null; renderMain(); } }, 'Show all projects')));
-    } else if (canCreate(t) && (isHQ() || own(opts.projectId) || role() === 'CLERK')) {
+    } else if (canCreate(t) && inScope(opts.projectId)) {
       c.appendChild(h('div', { class: 'toolbar' }, h('div', { class: 'sp' }), h('button', { class: 'btn primary sm', onclick: () => openRecord(t, null, { projectId: opts.projectId }) }, icon('plus'), newLabel(t))));
     }
 
@@ -1119,16 +1122,16 @@
       draft[f.k] = d === undefined ? '' : d;
     });
     if (isNew && defaults && defaults.projectId) draft.projectId = defaults.projectId;
-    if (isNew && t === 'Tasks' && !isHQ()) draft.assignee = me().email;
+    if (isNew && t === 'Tasks' && !isLead() && !isMgr()) draft.assignee = me().email;
     drawerReturn = document.activeElement;
     const form = h('div', { class: 'form' });
     const errs = h('div', { class: 'banner warn', hidden: true, role: 'alert' });
     sc.fields.forEach((f) => {
       if (f.sys || f.type === 'json') return;
-      if (f.hqOnly && !isHQ()) return;
+      if (f.leadOnly && !isLead()) return;
       const id = 'd-' + f.k;
       const wide = f.type === 'longtext' || f.k === 'title' || f.k === 'name' || f.k === 'ask' || f.k === 'item' || (f.type === 'project');
-      const lockedField = !editable || (t === 'Tasks' && !isHQ() && (f.k === 'assignee' && !isNew || f.k === 'due' && !isNew)) || (t === 'Projects' && !isHQ() && role() !== 'CLERK' && ['lead', 'deputy', 'tier', 'tierStatus', 'code'].indexOf(f.k) >= 0) || (t === 'Users' && f.k === 'role' && !isHQ() && draft.role === 'HQ');
+      const lockedField = !editable || (t === 'Tasks' && !isLead() && !isMgr() && (f.k === 'assignee' && !isNew || f.k === 'due' && !isNew)) || (t === 'Projects' && !isLead() && role() !== 'CLERK' && ['lead', 'deputy', 'tier', 'tierStatus', 'code'].indexOf(f.k) >= 0) || (t === 'Users' && f.k === 'role' && !isLead() && draft.role === 'LEAD');
       let ctl;
       if (lockedField) {
         const v = draft[f.k];
@@ -1138,8 +1141,8 @@
         ctl = h('textarea', { class: 'input', id: id, rows: 3, oninput: (e) => { draft[f.k] = e.target.value; } }); ctl.value = draft[f.k] || '';
       } else if (f.type === 'enum' || f.type === 'project' || f.type === 'user') {
         let opts = optionsFor(t, f, rec);
-        if (t === 'Users' && f.k === 'role' && !isHQ()) opts = opts.filter((o) => o.v !== 'HQ');
-        if (t === 'Tasks' && f.k === 'status' && !isHQ()) opts = opts.filter((o) => o.v !== 'Accepted' || draft.status === 'Accepted');
+        if (t === 'Users' && f.k === 'role' && !isLead()) opts = opts.filter((o) => o.v !== 'LEAD');
+        if (t === 'Tasks' && f.k === 'status' && !(isLead() || (isMgr() && !isMe(draft.assignee)))) opts = opts.filter((o) => o.v !== 'Accepted' || draft.status === 'Accepted');
         ctl = h('select', { class: 'input', id: id, onchange: (e) => { draft[f.k] = e.target.value; } }, (f.req && draft[f.k] ? [] : [h('option', { value: '' }, f.req ? 'Choose…' : '—')]).concat(opts.filter((o) => o.v !== '').map((o) => h('option', { value: o.v, selected: String(o.v) === String(draft[f.k]) ? true : null }, o.l))));
       } else if (f.type === 'bool') {
         ctl = h('label', { class: 'check', style: { minHeight: '38px' } }, h('input', { type: 'checkbox', id: id, checked: !!draft[f.k], onchange: (e) => { draft[f.k] = e.target.checked; } }), 'Yes');
@@ -1151,16 +1154,16 @@
 
     const titleTxt = isNew ? newLabel(t) : (t === 'Projects' ? rec.code : rec.id) + (rec.title ? ' — ' + rec.title : rec.item ? ' — ' + rec.item : rec.name ? ' — ' + rec.name : '');
     const saveBtn = editable ? h('button', { class: 'btn primary', onclick: save }, isNew ? 'Create' : 'Save changes') : null;
-    const delBtn = !isNew && (isHQ() || (t === 'Weekly' && isMe(rec.createdBy))) ? h('button', { class: 'btn ghost danger', onclick: del }, 'Delete') : null;
+    const delBtn = !isNew && (isLead() || (t === 'Weekly' && isMe(rec.createdBy))) ? h('button', { class: 'btn ghost danger', onclick: del }, 'Delete') : null;
     const extra = [];
-    if (!isNew && t === 'Tasks' && isHQ() && rec.status === 'Submitted') {
+    if (!isNew && t === 'Tasks' && (isLead() || (isMgr() && !isMe(rec.assignee))) && rec.status === 'Submitted') {
       extra.push(h('button', { class: 'btn good', onclick: () => { draft.status = 'Accepted'; save(); } }, 'Accept'), h('button', { class: 'btn', onclick: () => { draft.status = 'Returned'; save(); } }, 'Return'));
     }
     if (!isNew && t === 'Projects') extra.push(h('button', { class: 'btn', onclick: () => { closeDrawer(); go('project', { id: rec.id }); } }, 'Open project page'));
 
     const body = h('div', { class: 'db' }, errs,
       sc.level2 ? h('div', { class: 'banner info' }, icon('info'), 'Level 2 record owned by the project / contractor. HQ QA holds the reference.') : null,
-      !editable && !isNew ? h('div', { class: 'banner info' }, icon('info'), isStaff() ? 'You can view this record. Changes are made by its owner or Head – QA.' : 'Read-only view.') : null,
+      !editable && !isNew ? h('div', { class: 'banner info' }, icon('info'), isStaff() ? 'You can view this record. Changes are made by its owner or Lead – QA.' : 'Read-only view.') : null,
       t === 'Escalations' && draft.stopWork && !isNew ? swoBlock(draft) : null,
       form,
       !isNew ? h('div', { class: 'meta-row' }, h('span', null, 'Created ' + F.stamp(rec.createdAt) + ' by ' + userName(rec.createdBy)), h('span', null, 'Updated ' + F.stamp(rec.updatedAt) + ' by ' + userName(rec.updatedBy)), h('span', null, 'Rev ' + rec.rev)) : null);
@@ -1176,7 +1179,7 @@
 
     function save() {
       errs.hidden = true;
-      const missing = sc.fields.filter((f) => f.req && !f.sys && (draft[f.k] === '' || draft[f.k] === null || draft[f.k] === undefined) && !(f.hqOnly && !isHQ()));
+      const missing = sc.fields.filter((f) => f.req && !f.sys && (draft[f.k] === '' || draft[f.k] === null || draft[f.k] === undefined) && !(f.leadOnly && !isLead()));
       if (missing.length) { errs.hidden = false; errs.replaceChildren(icon('alert'), 'Required: ' + missing.map((f) => f.label).join(', ') + '.'); return; }
       saveBtn && (saveBtn.disabled = true);
       call('save', { table: t, record: draft }).then((r) => { patch(t, r); closeDrawer(); toast((isNew ? 'Created ' : 'Saved ') + (t === 'Projects' ? r.code : r.id), 'ok'); renderMain(); refresh(); })
@@ -1244,24 +1247,24 @@
       selectBox('Month', months.map((m) => ({ v: m, l: F.month(m) + (D('Reports').find((r) => r.period === m) ? ' · ' + D('Reports').find((r) => r.period === m).state : '') })), per, (v) => { S.params.period = v; renderMain(); }),
       h('div', { class: 'sp' }),
       h('button', { class: 'btn', onclick: printPage }, icon('print'), 'Print / save as PDF'),
-      rep && isHQ() && !issued ? h('button', { class: 'btn primary', onclick: () => confirmBox('Issue the ' + F.month(per) + ' report?', 'Issuing freezes the report and a snapshot of the dashboard as at the end of the month. It can no longer be edited.', 'Issue').then((y) => { if (y) call('reportIssue', { id: rep.id, rev: rep.rev }).then((r) => { patch('Reports', r); toast('Report issued', 'ok'); renderMain(); }).catch(fail); }) }, 'Issue report') : null));
+      rep && isLead() && !issued ? h('button', { class: 'btn primary', onclick: () => confirmBox('Issue the ' + F.month(per) + ' report?', 'Issuing freezes the report and a snapshot of the dashboard as at the end of the month. It can no longer be edited.', 'Issue').then((y) => { if (y) call('reportIssue', { id: rep.id, rev: rep.rev }).then((r) => { patch('Reports', r); toast('Report issued', 'ok'); renderMain(); }).catch(fail); }) }, 'Issue report') : null));
 
     c.appendChild(h('div', { class: 'print-only' }, h('div', { style: { display: 'flex', justifyContent: 'space-between', borderBottom: '3px solid #0B2A6F', paddingBottom: '6px', marginBottom: '10px' } }, h('b', { style: { fontSize: '18px' } }, B().config.orgName), h('span', null, 'Monthly Management Assurance Report — ' + F.month(per)))));
     c.appendChild(pageHead('Monthly management assurance report — ' + F.month(per), 'RMM §21: overall conclusion, portfolio dashboard, top five quality risks, significant findings and escalations, NCR / CAPA trends and decisions required. It distinguishes facts, HQ QA assessment, limitations and decisions.', null,
       h('div', { class: 'meta-row' }, rep ? chip(rep.state) : h('span', { class: 'chip plain' }, 'Not started'), issued ? h('span', null, 'Issued ' + F.stamp(rep.issuedAt) + ' by ' + userName(rep.issuedBy) + ' · dashboard frozen as at ' + F.date(snap.asOf)) : h('span', null, 'Sections 2–5 show live records until the report is issued.'))));
 
     if (!rep) {
-      c.appendChild(card('No report for ' + F.month(per) + ' yet', null, isHQ()
+      c.appendChild(card('No report for ' + F.month(per) + ' yet', null, isLead()
         ? h('div', { style: { display: 'flex', flexDirection: 'column', gap: '12px', alignItems: 'flex-start' } }, h('p', null, 'Start the report to write the overall conclusion and decisions. Sections 2–5 are compiled from the records automatically.'), h('button', { class: 'btn primary', onclick: () => call('save', { table: 'Reports', record: { period: per, overall: live.overall === 'Not assessed' ? '' : live.overall, confidence: 'Moderate' } }).then((r) => { patch('Reports', r); renderMain(); }).catch(fail) }, icon('plus'), 'Start the ' + F.month(per) + ' report'))
-        : h('p', { class: 'muted' }, 'Head – QA has not started this month’s report.')));
-      if (!isHQ()) return;
+        : h('p', { class: 'muted' }, 'Lead – QA has not started this month’s report.')));
+      if (!isLead()) return;
     }
 
     const sec = (n, title, body, right) => h('section', { class: 'card report-sec' }, h('div', { class: 'ch' }, h('div', { class: 'tt' }, h('h2', null, n + '. ' + title)), right || null), h('div', { class: 'cb' }, body));
 
     // 1 Overall conclusion
     if (rep) {
-      const editable = isHQ() && !issued;
+      const editable = isLead() && !issued;
       const d = JSON.parse(JSON.stringify(rep));
       const fld = (k, rows) => {
         const f = fieldOf('Reports', k);
@@ -1310,7 +1313,7 @@
     const lines = String((rep && rep.decisions) || '').split(/\n+/).filter(Boolean);
     const bc = escs.filter((e) => e.level === 'B' || e.level === 'C');
     let decBody;
-    if (rep && isHQ() && !issued) {
+    if (rep && isLead() && !issued) {
       const t = h('textarea', { class: 'input', rows: 4, id: 'r-decisions', oninput: (e) => { S.params.repDraft.decisions = e.target.value; } }); t.value = rep.decisions || '';
       decBody = h('div', { class: 'form' }, h('div', { class: 'field full' }, h('label', { for: 'r-decisions' }, 'Decisions required — one per line: decision | accountable executive | required date'), t), h('div', { class: 'field full small muted' }, 'Save with the button in section 1.'));
     } else decBody = lines.length ? h('ol', { style: { margin: 0, paddingLeft: '20px' } }, lines.map((l) => h('li', { style: { marginBottom: '6px' } }, l))) : h('p', { class: 'muted' }, 'No decisions recorded.');
@@ -1318,7 +1321,7 @@
       bc.length ? h('div', null, h('h3', { style: { margin: '6px 0 8px' } }, 'Open Level B / C escalations'), h('div', { class: 'list' }, bc.map((e) => h('div', { class: 'li' }, lvl(e.level), h('div', { class: 'body' }, h('b', null, e.ask), h('span', { class: 'small muted' }, e.owner + ' · due ' + F.date(e.dueDate))))))) : null)));
 
     c.appendChild(h('section', { class: 'card' }, h('div', { class: 'cb' }, h('table', { class: 'tbl compact' }, h('thead', null, h('tr', null, ['', 'Name', 'Designation', 'Signature', 'Date'].map((x) => h('th', null, x)))),
-      h('tbody', null, [['Prepared by', rep && rep.issuedBy ? userName(rep.issuedBy) : me().role === 'HQ' ? me().name : '', 'Head of QA'], ['Reviewed by', '', 'Head of Department, Standard & Compliance'], ['Approved by', '', 'Division Head']].map((r) => h('tr', null, h('td', null, h('b', null, r[0])), h('td', null, r[1]), h('td', null, r[2]), h('td', { style: { height: '40px' } }, ''), h('td', null, '')))))))) ;
+      h('tbody', null, [['Prepared by', rep && rep.issuedBy ? userName(rep.issuedBy) : isLead() ? me().name : '', 'Lead – QA'], ['Reviewed by', '', 'Head of Department, Standard & Compliance'], ['Approved by', '', 'Division Head']].map((r) => h('tr', null, h('td', null, h('b', null, r[0])), h('td', null, r[1]), h('td', null, r[2]), h('td', { style: { height: '40px' } }, ''), h('td', null, '')))))))) ;
   };
 
   /* ---------------- Administration ---------------- */
@@ -1326,10 +1329,10 @@
     setCrumb('Administration', 'System');
     const tab = S.params.tab || 'users';
     c.appendChild(pageHead('Administration', 'People and roles, settings, bulk import and setup.', null));
-    const tabs = [['users', 'Users & roles'], ['import', 'Import data']].concat(isHQ() ? [['settings', 'Settings'], ['about', 'Setup & data']] : []);
+    const tabs = [['users', 'Users & roles'], ['import', 'Import data']].concat(isLead() ? [['settings', 'Settings'], ['about', 'Setup & data']] : []);
     c.appendChild(h('div', { class: 'tabs', role: 'tablist' }, tabs.map((t) => h('button', { role: 'tab', 'aria-selected': String(tab === t[0]), onclick: () => { S.params.tab = t[0]; renderMain(); } }, t[1]))));
     if (tab === 'users') {
-      c.appendChild(h('div', { class: 'banner info' }, icon('info'), 'Add each person with the Google account they sign in with. Head – QA sees everything and approves; Assistant Managers update projects allocated to them; the admin clerk keeps registers and users; Management is read-only.'));
+      c.appendChild(h('div', { class: 'banner info' }, icon('info'), 'Add each person with the Google account they sign in with. Lead – QA sees everything and approves; Managers work across all projects and manage the team’s tasks; Assistant Managers update the projects allocated to them; the admin clerk keeps registers and users; Management is read-only.'));
       c.appendChild(h('div', { class: 'toolbar' }, h('div', { class: 'sp' }), canCreate('Users') ? h('button', { class: 'btn primary', onclick: () => openRecord('Users', null) }, icon('plus'), 'Add user') : null));
       const tb = h('tbody');
       D('Users').slice().sort((a, b) => String(a.role).localeCompare(String(b.role)) || String(a.name).localeCompare(String(b.name))).forEach((u) => tb.appendChild(h('tr', { class: 'click', tabindex: '0', onclick: () => openRecord('Users', u), onkeydown: (e) => { if (e.key === 'Enter') openRecord('Users', u); } },
@@ -1354,7 +1357,7 @@
     if (tab === 'import') importPanel(c);
     if (tab === 'about') {
       c.appendChild(card('Where the data lives', null, h('div', { style: { display: 'flex', flexDirection: 'column', gap: '10px' } },
-        h('p', null, 'Every register is a tab in one Google Sheet owned by Head – QA. People use Q-TRACK; they do not need access to the Sheet. Each change is stamped with who made it and when, and copied to the Audit tab.'),
+        h('p', null, 'Every register is a tab in one Google Sheet owned by Lead – QA. People use Q-TRACK; they do not need access to the Sheet. Each change is stamped with who made it and when, and copied to the Audit tab.'),
         B().sheetUrl ? h('p', null, h('a', { href: B().sheetUrl, target: '_blank', rel: 'noopener' }, 'Open the backing Google Sheet ', icon('ext'))) : null,
         h('p', { class: 'small muted' }, 'Sample data: projects coded DEMO-… and people at @sample.example. Remove them from the Sheet menu: Q-TRACK → Remove sample data.'),
         h('p', { class: 'small muted' }, 'Version ' + B().app.version + ' · ' + B().app.edition + ' · time zone ' + B().tz))));
@@ -1449,7 +1452,7 @@
       window.addEventListener('resize', debounce(() => { if (!document.querySelector('.drawer.on')) renderMain(); }, 250));
       setInterval(() => { if (document.visibilityState === 'visible') refresh(); }, 5 * 60 * 1000);
     }).catch((e) => {
-      if (e.code === 'NOT_REGISTERED') gate('Access not set up yet', 'You are signed in as ' + e.message + ', but this account is not registered in Q-TRACK. Ask Head – QA or the admin clerk to add you under Administration → Users & roles, then reload.');
+      if (e.code === 'NOT_REGISTERED') gate('Access not set up yet', 'You are signed in as ' + e.message + ', but this account is not registered in Q-TRACK. Ask Lead – QA or the admin clerk to add you under Administration → Users & roles, then reload.');
       else if (e.code === 'NOT_SET_UP') gate('Q-TRACK is not set up', e.message);
       else gate('Q-TRACK could not start', e.message || 'Unknown problem.', h('button', { class: 'btn primary', onclick: boot }, 'Try again'));
     });

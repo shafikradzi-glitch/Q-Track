@@ -15,7 +15,7 @@ function ss_() {
   SS_CACHE_ = SpreadsheetApp.getActive();
   if (!SS_CACHE_) {
     const id = PropertiesService.getScriptProperties().getProperty('QTRACK_SHEET_ID');
-    if (!id) throw new AppError('NOT_SET_UP', 'Q-TRACK has no Sheet yet. Head – QA should run setup() from the Apps Script editor of the Sheet.');
+    if (!id) throw new AppError('NOT_SET_UP', 'Q-TRACK has no Sheet yet. Lead – QA should run setup() from the Apps Script editor of the Sheet.');
     SS_CACHE_ = SpreadsheetApp.openById(id);
   }
   return SS_CACHE_;
@@ -42,7 +42,7 @@ function fieldMap_(table) {
 
 function sheetOf_(name) {
   const sh = ss_().getSheetByName(name);
-  if (!sh) throw new AppError('NOT_SET_UP', 'The “' + name + '” tab is missing. Head – QA should run setup() from the Apps Script editor.');
+  if (!sh) throw new AppError('NOT_SET_UP', 'The “' + name + '” tab is missing. Lead – QA should run setup() from the Apps Script editor.');
   return sh;
 }
 
