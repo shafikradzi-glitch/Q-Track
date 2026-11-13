@@ -12,6 +12,8 @@ Time needed: about 20 minutes, once.
 
 ## 1. Create the Sheet and the script
 
+**Quickest route:** the [`deploy/`](../deploy/) folder holds the whole app as three files to paste (`Code.gs`, `Index.html`, `appsscript.json`), with its own short steps in [`deploy/README.md`](../deploy/README.md). If you use it, skip to step 2 below. The steps here paste the eleven source files one by one and give the same result.
+
 1. In Google Drive, create a new Google Sheet named **Q-TRACK Data**. Keep it in your own Drive and do **not** share it with the team: the app works on their behalf.
 2. In the Sheet, open **Extensions → Apps Script**. A script project opens, bound to the Sheet.
 3. In the Apps Script editor:
@@ -99,4 +101,5 @@ From the repository root:
 node tests/run.js            # server rules, permissions and workflow (no Google account needed)
 node tools/preview/build.js  # builds dist/preview.html: the full app with sample data, in your browser
 node tools/preview/shots.js  # optional: clicks through every screen in Chromium and saves screenshots
+node tools/bundle.js         # rebuilds deploy/ (the three paste-in files); QTRACK_BUNDLE=1 node tests/run.js tests it
 ```
