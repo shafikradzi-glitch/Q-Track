@@ -91,6 +91,9 @@ The URL stays the same. Do not create a new deployment, or the link changes. If 
 - **Daily alert e-mail.** In the Sheet, choose **Q-TRACK → Turn on the daily alert e-mail**. Each person then gets their open alerts at about 07:00, and Lead – QA also gets every Critical alert.
 - **Thresholds.** Coverage target, CAPA target and NCR ageing bands are under **Administration → Settings**. They show as *Proposed* until you tick "Thresholds approved by Lead – QA" (RMM Annex A).
 - **Ownership.** The deployment runs as its owner. If Lead – QA changes, the new Lead – QA should make a copy of the Sheet with its script and deploy again, or IT can transfer ownership.
+- **Evidence.** To submit an assessment, every Amber or Red area needs a Google Drive or Docs link to the evidence and a sentence of rationale. A Grey area needs the rationale only. Keep evidence in the QA shared drive, in a folder per project per cycle (for example `Q-TRACK Evidence / PML / 2026-12`), never in a personal My Drive. Lead – QA checks the folder when approving.
+- **Independent approval.** The person who submitted an assessment cannot approve it. If Lead – QA prepared it, someone else submits it.
+- **Monthly report due date.** The report for a month is due on the first Monday of the next month. If that day is a public holiday, it moves to the next working day: list the holidays under **Administration → Settings**. Lead – QA sees a reminder in Q-TRACK from seven days before the due date until the report is issued, and gets it in the daily alert e-mail if that is turned on. "First month with a monthly report" in Settings stops reminders for earlier months.
 - **Limits.** Apps Script suits a unit-sized team: dozens of users and tens of thousands of rows. Each page load reads the registers fresh, so everyone always sees the latest records.
 
 ## Checking a change before deploying
@@ -103,3 +106,14 @@ node tools/preview/build.js  # builds dist/preview.html: the full app with sampl
 node tools/preview/shots.js  # optional: clicks through every screen in Chromium and saves screenshots
 node tools/bundle.js         # rebuilds deploy/ (the three paste-in files); QTRACK_BUNDLE=1 node tests/run.js tests it
 ```
+
+## Handing the deployment to someone else
+
+The web app runs under the Google account that deployed it. If that person leaves or their account is suspended, the app stops, although the Sheet and its data stay safe in the shared drive. To move it:
+
+1. Make sure the new owner is an editor of the Sheet and of the Apps Script project.
+2. The new owner opens the script editor, goes to **Deploy → New deployment**, chooses **Web app**, and uses the same settings as in step 3 above.
+3. The new owner runs **Q-TRACK → Turn on the daily alert e-mail** again, because the timer belongs to the person who turned it on.
+4. Send the new link to the team. The old link stops working once the old deployment is archived (**Deploy → Manage deployments → Archive**).
+
+Do this before the old account is closed, while both people can still sign in.

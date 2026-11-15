@@ -280,6 +280,12 @@ test('assessment workflow: draft → submit → return → submit → approve, t
   no(AM_CIVIL, 'assessmentSubmit', { id: a.id, rev: a.rev }, 'INVALID'); // evidence missing for areas 3 and 4
   const ev = []; ev[2] = 'Hold points released without records (F-00001).'; ev[3] = '18 NCRs past expected.';
   a = ok(AM_CIVIL, 'save', { table: 'Assessments', record: Object.assign({}, a, { evidence: ev, conclusion: 'QC control weak.' }) });
+  assert.ok(/Drive or Docs link/.test(no(AM_CIVIL, 'assessmentSubmit', { id: a.id, rev: a.rev }, 'INVALID').message), 'Amber and Red need a Drive link');
+  ev[2] += ' https://drive.google.com/drive/folders/abc123'; ev[3] = 'https://docs.google.com/spreadsheets/d/xyz';
+  a = ok(AM_CIVIL, 'save', { table: 'Assessments', record: Object.assign({}, a, { evidence: ev }) });
+  assert.ok(/rationale/.test(no(AM_CIVIL, 'assessmentSubmit', { id: a.id, rev: a.rev }, 'INVALID').message), 'a link alone is not enough');
+  ev[3] = '18 NCRs past expected. https://docs.google.com/spreadsheets/d/xyz';
+  a = ok(AM_CIVIL, 'save', { table: 'Assessments', record: Object.assign({}, a, { evidence: ev }) });
   no(AM_SYS, 'assessmentSubmit', { id: a.id, rev: a.rev }, 'DENIED');
   a = ok(AM_CIVIL, 'assessmentSubmit', { id: a.id, rev: a.rev });
   assert.strictEqual(a.state, 'Submitted');
@@ -307,6 +313,49 @@ test('assessment workflow: draft → submit → return → submit → approve, t
   assert.strictEqual(heat.overall, 'Amber');
   assert.strictEqual(heat.moderated, true);
   assert.strictEqual(heat.period, '2030-01');
+});
+
+test('the person who submitted an assessment cannot approve it', () => {
+  const { ok, no } = fresh(true);
+  const pml = ok(HQ, 'bootstrap').data.Projects.find((p) => p.code === 'DEMO-PML');
+  const rec = { projectId: pml.id, period: '2030-02', a1: 'Green', a2: 'Grey', a3: 'Green', a4: 'Green', a5: 'Green', a6: 'Green', a7: 'Green', a8: 'Green', a9: 'Green', a10: 'N/A', evidence: ['', 'Records not yet provided by the project.'], conclusion: 'Controls operating.' };
+  let a = ok(HQ, 'save', { table: 'Assessments', record: rec });
+  a = ok(HQ, 'assessmentSubmit', { id: a.id, rev: a.rev }); // Grey needs a rationale but no link
+  assert.strictEqual(a.submittedBy, HQ);
+  assert.ok(/someone else must approve/.test(no(HQ, 'assessmentApprove', { id: a.id, rev: a.rev }, 'DENIED').message));
+  a = ok(HQ, 'assessmentReturn', { id: a.id, rev: a.rev, note: 'Back to the assessor.' });
+  a = ok(AM_CIVIL, 'assessmentSubmit', { id: a.id, rev: a.rev });
+  assert.strictEqual(a.submittedBy, AM_CIVIL);
+  a = ok(HQ, 'assessmentApprove', { id: a.id, rev: a.rev });
+  assert.strictEqual(a.state, 'Approved');
+});
+
+test('monthly report is due on the first Monday, or the next working day after a holiday', () => {
+  const { ctx } = fresh(false);
+  assert.strictEqual(ctx.reportDueDate('2026-12', ''), '2027-01-04');
+  assert.strictEqual(ctx.reportDueDate('2027-01', ''), '2027-02-01');
+  assert.strictEqual(ctx.reportDueDate('2027-01', '2027-02-01, 2027-02-02'), '2027-02-03');
+  assert.strictEqual(ctx.reportDueDate('2027-04', '2027-05-03'), '2027-05-04');
+});
+
+test('report-due reminder: starts 7 days before, turns High when overdue, clears on issue', () => {
+  const { ctx } = fresh(true);
+  const cfg = Object.assign({}, { reportsFrom: '2026-12', holidays: '', ncrBand1: 30, ncrBand2: 60, ncrBand3: 90, capaTarget: 80, coverageTarget: 90 });
+  const db = ctx.loadDb_();
+  db.Reports = [];
+  const at = (d) => ctx.computeAlerts(db, d, cfg).filter((a) => a.rule === 'REPORT_DUE');
+  assert.strictEqual(at('2026-12-27').length, 0, 'more than 7 days before');
+  assert.strictEqual(at('2026-12-10').length, 0, 'no reminder for months before reportsFrom');
+  let r = at('2026-12-28');
+  assert.strictEqual(r.length, 1); assert.strictEqual(r[0].severity, 'Medium'); assert.strictEqual(r[0].owner, HQ); assert.strictEqual(r[0].date, '2027-01-04');
+  assert.ok(/due today/.test(at('2027-01-04')[0].title));
+  r = at('2027-01-05');
+  assert.strictEqual(r[0].severity, 'High'); assert.ok(/overdue/.test(r[0].title));
+  db.Reports = [{ period: '2026-12', state: 'Draft' }];
+  assert.strictEqual(at('2027-01-05').length, 1, 'a draft does not clear it');
+  db.Reports = [{ period: '2026-12', state: 'Issued' }];
+  assert.strictEqual(at('2027-01-05').length, 0);
+  assert.strictEqual(at('2027-01-26').length, 1, 'next month starts 7 days before 1 Feb');
 });
 
 test('tasks: owners update their own, only Lead – QA accepts or re-dates', () => {

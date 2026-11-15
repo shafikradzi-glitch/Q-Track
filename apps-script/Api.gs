@@ -49,7 +49,7 @@ function bootstrap_() {
   Object.keys(TABLES).forEach((t) => { seen[t] = visibleRows_(t, db[t], user); });
   if (user.role === 'VIEWER') { seen.Findings = db.Findings; seen.NCRs = db.NCRs; seen.Tasks = []; }
   const dash = buildDashboard(seen, asOf, cfg);
-  if (user.role === 'VIEWER') dash.alerts = dash.alerts.filter((a) => a.severity === 'Critical' || a.severity === 'High').map((a) => Object.assign({}, a, { owner: '' }));
+  if (user.role === 'VIEWER') dash.alerts = dash.alerts.filter((a) => (a.severity === 'Critical' || a.severity === 'High') && a.rule !== 'REPORT_DUE').map((a) => Object.assign({}, a, { owner: '' }));
 
   const lastChange = Object.keys(TABLES).reduce((best, t) => db[t].reduce((b, r) => (String(r.updatedAt) > String(b.at) ? { at: r.updatedAt, by: r.updatedBy } : b), best), { at: '', by: '' });
 
@@ -222,12 +222,16 @@ function assessmentMove_(p, move) {
       if (['Draft', 'Returned'].indexOf(a.state) < 0) throw new AppError('LOCKED', 'Only a draft or returned assessment can be submitted.');
       const missing = AREAS.filter((ar, i) => { const s = a['a' + (i + 1)]; return s !== 'N/A' && s !== 'Green' && !String((a.evidence || [])[i] || '').trim(); });
       if (missing.length) throw new AppError('INVALID', 'Give the evidence basis for every area that is not Green or N/A: ' + missing.map((m) => m.n).join(', ') + '.');
+      // Amber and Red need a Drive / Docs link and a rationale. Grey means limited evidence, so it needs the rationale only.
+      const weak = AREAS.filter((ar, i) => { const s = a['a' + (i + 1)]; return (s === 'Amber' || s === 'Red') && evidenceGap((a.evidence || [])[i]); });
+      if (weak.length) throw new AppError('INVALID', 'Every Amber or Red area needs a Google Drive or Docs link to the evidence and a sentence of rationale: ' + weak.map((m) => m.n).join(', ') + '.');
       if (!String(a.conclusion || '').trim()) throw new AppError('INVALID', 'Write the overall conclusion before submitting.');
-      a.state = 'Submitted'; a.submittedAt = stamp; a.returnNote = '';
+      a.state = 'Submitted'; a.submittedAt = stamp; a.submittedBy = u.email; a.returnNote = '';
     } else {
       if (!isLead_(u)) throw new AppError('DENIED', 'Only Lead – QA approves or returns assessments.');
       if (a.state !== 'Submitted') throw new AppError('LOCKED', 'Only a submitted assessment can be ' + (move === 'approve' ? 'approved' : 'returned') + '.');
       if (move === 'approve') {
+        if (a.submittedBy && String(a.submittedBy).toLowerCase() === String(u.email).toLowerCase()) throw new AppError('DENIED', 'You submitted this assessment, so someone else must approve it. Ask the assessor to submit it, or return it.');
         a.state = 'Approved'; a.approvedBy = u.email; a.approvedAt = stamp; a.final = a.moderatedTo || a.overall;
       } else {
         if (!p.note || String(p.note).trim().length < 5) throw new AppError('INVALID', 'Say what needs to change.');
@@ -281,7 +285,7 @@ function configSave_(p) {
     CONFIG_FIELDS.forEach((f) => {
       if (!(f.k in (p.config || {}))) return;
       const v = p.config[f.k];
-      cfg[f.k] = f.type === 'bool' ? v === true : f.type === 'number' ? Math.max(0, Number(v) || CONFIG_DEFAULTS[f.k]) : String(v).slice(0, 200);
+      cfg[f.k] = f.type === 'bool' ? v === true : f.type === 'number' ? Math.max(0, Number(v) || CONFIG_DEFAULTS[f.k]) : String(v).slice(0, f.k === 'holidays' ? 2000 : 200);
     });
     if (!(cfg.ncrBand1 < cfg.ncrBand2 && cfg.ncrBand2 < cfg.ncrBand3)) throw new AppError('INVALID', 'The NCR ageing bands must increase (for example 30, 60, 90).');
     writeConfig_(cfg);

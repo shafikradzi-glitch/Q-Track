@@ -52,6 +52,8 @@ const CONFIG_DEFAULTS = {
   ncrBand3: 90,
   thresholdsApproved: false,
   digestEnabled: false,
+  reportsFrom: '2026-12',
+  holidays: '',
   sampleData: false,
 };
 
@@ -62,6 +64,8 @@ const CONFIG_FIELDS = [
   { k: 'ncrBand1', label: 'NCR ageing band 1 (days past expected completion)', type: 'number' },
   { k: 'ncrBand2', label: 'NCR ageing band 2 (days)', type: 'number' },
   { k: 'ncrBand3', label: 'NCR ageing band 3 (days)', type: 'number' },
+  { k: 'reportsFrom', label: 'First month with a monthly report (yyyy-mm). Reports are due on the first Monday of the following month', type: 'text' },
+  { k: 'holidays', label: 'Public holidays (yyyy-mm-dd, separated by commas). A report due on one moves to the next working day', type: 'text' },
   { k: 'thresholdsApproved', label: 'Thresholds approved by Lead – QA (removes the “Proposed” labels)', type: 'bool' },
   { k: 'digestEnabled', label: 'Send each person a daily e-mail of their open alerts', type: 'bool' },
 ];
@@ -141,6 +145,7 @@ const TABLES = {
       { k: 'final', label: 'Final overall', type: 'text', sys: true },
       { k: 'state', label: 'State', type: 'text', sys: true, def: 'Draft', list: true },
       { k: 'submittedAt', label: 'Submitted', type: 'text', sys: true },
+      { k: 'submittedBy', label: 'Submitted by', type: 'text', sys: true },
       { k: 'approvedBy', label: 'Approved by', type: 'text', sys: true },
       { k: 'approvedAt', label: 'Approved', type: 'text', sys: true },
       { k: 'returnNote', label: 'Returned with', type: 'text', sys: true },
@@ -514,6 +519,27 @@ function milestoneStatus(m, asOf) {
   return { status: 'On track', variance: null };
 }
 
+/* ---------------- evidence and report due date ---------------- */
+
+const EVIDENCE_LINK_ = /https:\/\/(?:drive|docs)\.google\.com\/\S+/gi;
+
+/** Why an Amber / Red area's evidence is not enough: 'link', 'rationale', or '' when it is fine. */
+function evidenceGap(text) {
+  const s = String(text || '');
+  if (!s.match(EVIDENCE_LINK_)) return 'link';
+  return s.replace(EVIDENCE_LINK_, '').replace(/[^A-Za-z0-9]/g, '').length < 10 ? 'rationale' : '';
+}
+
+/** The monthly report for a period is due on the first Monday of the next month, or the next working day if that is a holiday. */
+function reportDueDate(period, holidays) {
+  const hol = String(holidays || '').split(/[\s,;]+/).filter(Boolean);
+  let d = shiftPeriod_(period, 1) + '-01';
+  const dow = (iso) => new Date(isoToDay_(iso) * 864e5).getUTCDay();
+  while (dow(d) !== 1) d = addDays_(d, 1);
+  while (dow(d) === 0 || dow(d) === 6 || hol.indexOf(d) >= 0) d = addDays_(d, 1);
+  return d;
+}
+
 /* ---------------- alert engine ---------------- */
 
 const SEVERITY_ORDER = { Critical: 0, High: 1, Medium: 2, Low: 3 };
@@ -597,6 +623,17 @@ function computeAlerts(db, asOf, cfg) {
     const la = latestApproved(db.Assessments, p.id);
     if (la && finalOf(la) === 'Red') push({ rule: 'PROJECT_RED', projectId: p.id, severity: 'High', band: 'Assurance assessment', title: 'Level 4 position Red', detail: 'Approved for ' + nice_(la.period) + ' — management intervention or heightened assurance required.', date: la.approvedAt ? String(la.approvedAt).slice(0, 10) : la.period + '-01', owner: p.lead, link: { view: 'Assessment', id: la.id } });
     if ((String(p.tier) === '1' || String(p.tier) === '2') && p.pqp !== 'Approved' && p.pqp !== 'N/A') push({ rule: 'PQP_MISSING', projectId: p.id, severity: 'Medium', band: 'Projects', title: 'No approved Project Quality Plan', detail: 'Tier ' + p.tier + ' project · PQP ' + (p.pqp || 'not recorded') + '.', date: p.startDate || asOf, owner: p.lead, link: { view: 'Project', id: p.id } });
+  });
+
+  // Monthly report: remind Lead – QA from 7 days before the due date until it is issued
+  const leads = (db.Users || []).filter((x) => x.role === 'LEAD' && x.active !== false);
+  const from = /^\d{4}-\d{2}$/.test(String(cfg && cfg.reportsFrom)) ? cfg.reportsFrom : '';
+  [lastPeriod, periodOf_(asOf)].forEach((per) => {
+    if (!from || per < from || (db.Reports || []).some((r) => r.period === per && r.state === 'Issued')) return;
+    const due = reportDueDate(per, cfg.holidays);
+    const late = daysBetween_(due, asOf);
+    if (late < -7) return;
+    leads.forEach((l) => push({ rule: 'REPORT_DUE', ref: per + ':' + l.email, severity: late > 0 ? 'High' : 'Medium', band: 'Monthly report', projectId: '', title: 'Monthly report for ' + nice_(per) + (late > 0 ? ' is overdue' : late === 0 ? ' is due today' : ' is due ' + nice_(due)), detail: late > 0 ? 'It was due ' + nice_(due) + ' (first Monday of the month) and has not been issued.' : 'Due ' + nice_(due) + ' (first Monday of the month). Write sections 1 and 6, then issue it.', date: due, owner: l.email, link: { view: 'report' } }));
   });
 
   // Tasks
@@ -1054,7 +1091,7 @@ function bootstrap_() {
   Object.keys(TABLES).forEach((t) => { seen[t] = visibleRows_(t, db[t], user); });
   if (user.role === 'VIEWER') { seen.Findings = db.Findings; seen.NCRs = db.NCRs; seen.Tasks = []; }
   const dash = buildDashboard(seen, asOf, cfg);
-  if (user.role === 'VIEWER') dash.alerts = dash.alerts.filter((a) => a.severity === 'Critical' || a.severity === 'High').map((a) => Object.assign({}, a, { owner: '' }));
+  if (user.role === 'VIEWER') dash.alerts = dash.alerts.filter((a) => (a.severity === 'Critical' || a.severity === 'High') && a.rule !== 'REPORT_DUE').map((a) => Object.assign({}, a, { owner: '' }));
 
   const lastChange = Object.keys(TABLES).reduce((best, t) => db[t].reduce((b, r) => (String(r.updatedAt) > String(b.at) ? { at: r.updatedAt, by: r.updatedBy } : b), best), { at: '', by: '' });
 
@@ -1227,12 +1264,16 @@ function assessmentMove_(p, move) {
       if (['Draft', 'Returned'].indexOf(a.state) < 0) throw new AppError('LOCKED', 'Only a draft or returned assessment can be submitted.');
       const missing = AREAS.filter((ar, i) => { const s = a['a' + (i + 1)]; return s !== 'N/A' && s !== 'Green' && !String((a.evidence || [])[i] || '').trim(); });
       if (missing.length) throw new AppError('INVALID', 'Give the evidence basis for every area that is not Green or N/A: ' + missing.map((m) => m.n).join(', ') + '.');
+      // Amber and Red need a Drive / Docs link and a rationale. Grey means limited evidence, so it needs the rationale only.
+      const weak = AREAS.filter((ar, i) => { const s = a['a' + (i + 1)]; return (s === 'Amber' || s === 'Red') && evidenceGap((a.evidence || [])[i]); });
+      if (weak.length) throw new AppError('INVALID', 'Every Amber or Red area needs a Google Drive or Docs link to the evidence and a sentence of rationale: ' + weak.map((m) => m.n).join(', ') + '.');
       if (!String(a.conclusion || '').trim()) throw new AppError('INVALID', 'Write the overall conclusion before submitting.');
-      a.state = 'Submitted'; a.submittedAt = stamp; a.returnNote = '';
+      a.state = 'Submitted'; a.submittedAt = stamp; a.submittedBy = u.email; a.returnNote = '';
     } else {
       if (!isLead_(u)) throw new AppError('DENIED', 'Only Lead – QA approves or returns assessments.');
       if (a.state !== 'Submitted') throw new AppError('LOCKED', 'Only a submitted assessment can be ' + (move === 'approve' ? 'approved' : 'returned') + '.');
       if (move === 'approve') {
+        if (a.submittedBy && String(a.submittedBy).toLowerCase() === String(u.email).toLowerCase()) throw new AppError('DENIED', 'You submitted this assessment, so someone else must approve it. Ask the assessor to submit it, or return it.');
         a.state = 'Approved'; a.approvedBy = u.email; a.approvedAt = stamp; a.final = a.moderatedTo || a.overall;
       } else {
         if (!p.note || String(p.note).trim().length < 5) throw new AppError('INVALID', 'Say what needs to change.');
@@ -1286,7 +1327,7 @@ function configSave_(p) {
     CONFIG_FIELDS.forEach((f) => {
       if (!(f.k in (p.config || {}))) return;
       const v = p.config[f.k];
-      cfg[f.k] = f.type === 'bool' ? v === true : f.type === 'number' ? Math.max(0, Number(v) || CONFIG_DEFAULTS[f.k]) : String(v).slice(0, 200);
+      cfg[f.k] = f.type === 'bool' ? v === true : f.type === 'number' ? Math.max(0, Number(v) || CONFIG_DEFAULTS[f.k]) : String(v).slice(0, f.k === 'holidays' ? 2000 : 200);
     });
     if (!(cfg.ncrBand1 < cfg.ncrBand2 && cfg.ncrBand2 < cfg.ncrBand3)) throw new AppError('INVALID', 'The NCR ageing bands must increase (for example 30, 60, 90).');
     writeConfig_(cfg);
