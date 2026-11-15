@@ -204,6 +204,27 @@ function milestoneStatus(m, asOf) {
   return { status: 'On track', variance: null };
 }
 
+/* ---------------- evidence and report due date ---------------- */
+
+const EVIDENCE_LINK_ = /https:\/\/(?:drive|docs)\.google\.com\/\S+/gi;
+
+/** Why an Amber / Red area's evidence is not enough: 'link', 'rationale', or '' when it is fine. */
+function evidenceGap(text) {
+  const s = String(text || '');
+  if (!s.match(EVIDENCE_LINK_)) return 'link';
+  return s.replace(EVIDENCE_LINK_, '').replace(/[^A-Za-z0-9]/g, '').length < 10 ? 'rationale' : '';
+}
+
+/** The monthly report for a period is due on the first Monday of the next month, or the next working day if that is a holiday. */
+function reportDueDate(period, holidays) {
+  const hol = String(holidays || '').split(/[\s,;]+/).filter(Boolean);
+  let d = shiftPeriod_(period, 1) + '-01';
+  const dow = (iso) => new Date(isoToDay_(iso) * 864e5).getUTCDay();
+  while (dow(d) !== 1) d = addDays_(d, 1);
+  while (dow(d) === 0 || dow(d) === 6 || hol.indexOf(d) >= 0) d = addDays_(d, 1);
+  return d;
+}
+
 /* ---------------- alert engine ---------------- */
 
 const SEVERITY_ORDER = { Critical: 0, High: 1, Medium: 2, Low: 3 };
@@ -287,6 +308,17 @@ function computeAlerts(db, asOf, cfg) {
     const la = latestApproved(db.Assessments, p.id);
     if (la && finalOf(la) === 'Red') push({ rule: 'PROJECT_RED', projectId: p.id, severity: 'High', band: 'Assurance assessment', title: 'Level 4 position Red', detail: 'Approved for ' + nice_(la.period) + ' — management intervention or heightened assurance required.', date: la.approvedAt ? String(la.approvedAt).slice(0, 10) : la.period + '-01', owner: p.lead, link: { view: 'Assessment', id: la.id } });
     if ((String(p.tier) === '1' || String(p.tier) === '2') && p.pqp !== 'Approved' && p.pqp !== 'N/A') push({ rule: 'PQP_MISSING', projectId: p.id, severity: 'Medium', band: 'Projects', title: 'No approved Project Quality Plan', detail: 'Tier ' + p.tier + ' project · PQP ' + (p.pqp || 'not recorded') + '.', date: p.startDate || asOf, owner: p.lead, link: { view: 'Project', id: p.id } });
+  });
+
+  // Monthly report: remind Lead – QA from 7 days before the due date until it is issued
+  const leads = (db.Users || []).filter((x) => x.role === 'LEAD' && x.active !== false);
+  const from = /^\d{4}-\d{2}$/.test(String(cfg && cfg.reportsFrom)) ? cfg.reportsFrom : '';
+  [lastPeriod, periodOf_(asOf)].forEach((per) => {
+    if (!from || per < from || (db.Reports || []).some((r) => r.period === per && r.state === 'Issued')) return;
+    const due = reportDueDate(per, cfg.holidays);
+    const late = daysBetween_(due, asOf);
+    if (late < -7) return;
+    leads.forEach((l) => push({ rule: 'REPORT_DUE', ref: per + ':' + l.email, severity: late > 0 ? 'High' : 'Medium', band: 'Monthly report', projectId: '', title: 'Monthly report for ' + nice_(per) + (late > 0 ? ' is overdue' : late === 0 ? ' is due today' : ' is due ' + nice_(due)), detail: late > 0 ? 'It was due ' + nice_(due) + ' (first Monday of the month) and has not been issued.' : 'Due ' + nice_(due) + ' (first Monday of the month). Write sections 1 and 6, then issue it.', date: due, owner: l.email, link: { view: 'report' } }));
   });
 
   // Tasks

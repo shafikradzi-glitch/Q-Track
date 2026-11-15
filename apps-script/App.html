@@ -851,7 +851,7 @@
     B().areas.forEach((a, i) => {
       const k = 'a' + a.n;
       const seg = h('div', { class: 'seg', role: 'radiogroup', 'aria-label': a.title, 'aria-disabled': editable ? null : 'true' });
-      const ev = h('textarea', { class: 'input', rows: 2, placeholder: 'Evidence basis — record references, sample checked, what was seen', 'aria-label': 'Evidence for ' + a.title, disabled: editable ? null : true, oninput: (e) => { draft.evidence[i] = e.target.value; } });
+      const ev = h('textarea', { class: 'input', rows: 2, placeholder: 'Evidence basis — what was seen and the sample checked. Amber or Red: paste the Google Drive link to the evidence', 'aria-label': 'Evidence for ' + a.title, disabled: editable ? null : true, oninput: (e) => { draft.evidence[i] = e.target.value; } });
       ev.value = (draft.evidence || [])[i] || '';
       const drawSeg = () => {
         seg.replaceChildren(...['Green', 'Amber', 'Red', 'Grey', 'N/A'].map((v) => h('button', {
@@ -921,7 +921,7 @@
         card('Project and period', null, h('div', { class: 'form' },
           h('div', { class: 'field' }, h('label', { for: 'f-projectId' }, 'Project', h('span', { class: 'req' }, '*')), projSel),
           h('div', { class: 'field' }, h('label', { for: 'f-period' }, 'Period', h('span', { class: 'req' }, '*')), perIn))),
-        card('Ten assurance areas', 'Criteria RMM v1.0 §9.1. Give the evidence basis for every area that is not Green or N/A — it is required to submit.', areaList)),
+        card('Ten assurance areas', 'Criteria RMM v1.0 §9.1. Give the evidence basis for every area that is not Green or N/A — it is required to submit. Amber and Red areas also need a Google Drive or Docs link to the evidence, kept in the QA shared drive.', areaList)),
       h('div', { class: 'sticky' },
         card('Overall result', 'Worst applicable area', ovBox),
         moderation,
@@ -1449,6 +1449,8 @@
       if (role() === 'VIEWER' && S.view === 'mywork') S.view = 'command';
       renderShell();
       renderMain();
+      const due = b.dashboard.alerts.find((a) => a.rule === 'REPORT_DUE' && isMe(a.owner));
+      if (due) toast(due.title + '. Open Monthly report to issue it.', due.severity === 'High' ? 'err' : '', 12000);
       window.addEventListener('resize', debounce(() => { if (!document.querySelector('.drawer.on')) renderMain(); }, 250));
       setInterval(() => { if (document.visibilityState === 'visible') refresh(); }, 5 * 60 * 1000);
     }).catch((e) => {

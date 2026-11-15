@@ -49,6 +49,8 @@ const CONFIG_DEFAULTS = {
   ncrBand3: 90,
   thresholdsApproved: false,
   digestEnabled: false,
+  reportsFrom: '2026-12',
+  holidays: '',
   sampleData: false,
 };
 
@@ -59,6 +61,8 @@ const CONFIG_FIELDS = [
   { k: 'ncrBand1', label: 'NCR ageing band 1 (days past expected completion)', type: 'number' },
   { k: 'ncrBand2', label: 'NCR ageing band 2 (days)', type: 'number' },
   { k: 'ncrBand3', label: 'NCR ageing band 3 (days)', type: 'number' },
+  { k: 'reportsFrom', label: 'First month with a monthly report (yyyy-mm). Reports are due on the first Monday of the following month', type: 'text' },
+  { k: 'holidays', label: 'Public holidays (yyyy-mm-dd, separated by commas). A report due on one moves to the next working day', type: 'text' },
   { k: 'thresholdsApproved', label: 'Thresholds approved by Lead – QA (removes the “Proposed” labels)', type: 'bool' },
   { k: 'digestEnabled', label: 'Send each person a daily e-mail of their open alerts', type: 'bool' },
 ];
@@ -138,6 +142,7 @@ const TABLES = {
       { k: 'final', label: 'Final overall', type: 'text', sys: true },
       { k: 'state', label: 'State', type: 'text', sys: true, def: 'Draft', list: true },
       { k: 'submittedAt', label: 'Submitted', type: 'text', sys: true },
+      { k: 'submittedBy', label: 'Submitted by', type: 'text', sys: true },
       { k: 'approvedBy', label: 'Approved by', type: 'text', sys: true },
       { k: 'approvedAt', label: 'Approved', type: 'text', sys: true },
       { k: 'returnNote', label: 'Returned with', type: 'text', sys: true },
