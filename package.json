@@ -4,7 +4,8 @@
   "private": true,
   "description": "Q-TRACK, Google Workspace edition: HQ QA Level 4 assurance web app (Google Apps Script + Google Sheets).",
   "scripts": {
-    "test": "node tests/run.js",
+    "test": "node tests/run.js && node tools/bundle.js && QTRACK_BUNDLE=1 node tests/run.js",
+    "bundle": "node tools/bundle.js",
     "preview": "node tools/preview/build.js",
     "shots": "node tools/preview/build.js && node tools/preview/shots.js"
   }

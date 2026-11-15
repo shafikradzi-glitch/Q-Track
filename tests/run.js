@@ -11,7 +11,10 @@ const { makeMock } = require('../tools/gas-mock.js');
 
 const ROOT = path.join(__dirname, '..', 'apps-script');
 const ORDER = ['Config.gs', 'Rules.gs', 'Db.gs', 'Auth.gs', 'Api.gs', 'Setup.gs', 'Code.gs'];
-const SOURCE = ORDER.map((f) => fs.readFileSync(path.join(ROOT, f), 'utf8')).join('\n;\n');
+// QTRACK_BUNDLE=1 runs the same tests against the pasted-in bundle (deploy/Code.gs).
+const SOURCE = process.env.QTRACK_BUNDLE
+  ? fs.readFileSync(path.join(__dirname, '..', 'deploy', 'Code.gs'), 'utf8')
+  : ORDER.map((f) => fs.readFileSync(path.join(ROOT, f), 'utf8')).join('\n;\n');
 
 const HQ = 'lead.qa@mrt.example';
 const MGR = 'mgr.civil@sample.example';

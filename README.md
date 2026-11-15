@@ -19,7 +19,8 @@ Deploy it with [`docs/DEPLOY.md`](docs/DEPLOY.md).
 
 | Path | What it is |
 |---|---|
-| [`apps-script/`](apps-script/) | The app: paste these files into an Apps Script project bound to the Q-TRACK Sheet |
+| [`deploy/`](deploy/) | **Start here to deploy:** the whole app as three files to paste into the Apps Script editor, with steps |
+| [`apps-script/`](apps-script/) | The app's source files (bundled into `deploy/` by `node tools/bundle.js`) |
 | [`docs/DEPLOY.md`](docs/DEPLOY.md) | Step-by-step setup, roles, imports and updates |
 | [`tests/run.js`](tests/run.js) | Server tests: rules, permissions, workflow, import and report (`node tests/run.js`) |
 | [`tools/`](tools/) | Local preview with sample data (`node tools/preview/build.js` → `dist/preview.html`) and a browser walkthrough |
